@@ -177,4 +177,8 @@ cairo_region_t *meta_window_get_frame_bounds (MetaWindow *window);
 
 MetaWindow *meta_window_get_tile_match (MetaWindow *window);
 
+int         meta_window_get_progress (MetaWindow *window);
+void        meta_window_set_progress (MetaWindow *window,
+                                      int progress);
+
 #endif

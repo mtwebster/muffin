@@ -413,6 +413,13 @@ struct _MetaWindow
 
   /* The currently complementary tiled window, if any */
   MetaWindow *tile_match;
+
+  /* Progress percentage for window-list progress indicator
+   * -1 = no progress tracking
+   * 0-100 progress amount
+   * Currently only used by Nemo for file operations
+   */
+  int progress;
 };
 
 struct _MetaWindowClass
@@ -423,6 +430,7 @@ struct _MetaWindowClass
   void (*focus)             (MetaWindow *window);
   void (*raised)            (MetaWindow *window);
   void (*unmanaged)         (MetaWindow *window);
+  void (*progress)          (MetaWindow *window, int progress);
 };
 
 /* These differ from window->has_foo_func in that they consider

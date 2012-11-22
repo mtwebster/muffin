@@ -177,7 +177,8 @@ enum {
   PROP_GTK_APPLICATION_OBJECT_PATH,
   PROP_GTK_WINDOW_OBJECT_PATH,
   PROP_GTK_APP_MENU_OBJECT_PATH,
-  PROP_GTK_MENUBAR_OBJECT_PATH
+  PROP_GTK_MENUBAR_OBJECT_PATH,
+  PROP_PROGRESS
 };
 
 enum
@@ -186,6 +187,7 @@ enum
   FOCUS,
   RAISED,
   UNMANAGED,
+  PROGRESS,
 
   LAST_SIGNAL
 };
@@ -318,6 +320,9 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_GTK_MENUBAR_OBJECT_PATH:
       g_value_set_string (value, win->gtk_menubar_object_path);
+      break;
+    case PROP_PROGRESS:
+      g_value_set_int (value, win->progress);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -533,6 +538,18 @@ meta_window_class_init (MetaWindowClass *klass)
                                                         NULL,
                                                         G_PARAM_READABLE));
 
+  g_object_class_install_property (object_class,
+                                   PROP_PROGRESS,
+                                   g_param_spec_int ("progress",
+                                                     "PROGRESS",
+                                                     "Contents of the PROGRESS property of this window",
+                                                     -1,
+                                                     100,
+                                                     -1,
+                                                     G_PARAM_READWRITE));
+
+
+
   window_signals[WORKSPACE_CHANGED] =
     g_signal_new ("workspace-changed",
                   G_TYPE_FROM_CLASS (object_class),
@@ -565,6 +582,15 @@ meta_window_class_init (MetaWindowClass *klass)
                   G_STRUCT_OFFSET (MetaWindowClass, unmanaged),
                   NULL, NULL, NULL,
                   G_TYPE_NONE, 0);
+
+  window_signals[PROGRESS] =
+    g_signal_new ("window-progress-changed",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (MetaWindowClass, progress),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE, 1, G_TYPE_INT);
+
 }
 
 static void
@@ -1168,6 +1194,8 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->monitor = meta_screen_get_monitor_for_window (window->screen, window);
 
   window->tile_match = NULL;
+
+  window->progress = -1;
 
   if (window->override_redirect)
     {
@@ -10872,3 +10900,23 @@ meta_window_compute_tile_match (MetaWindow *window)
       window->tile_match = match;
     }
 }
+
+int
+meta_window_get_progress (MetaWindow *window)
+{
+    return window->progress;
+}
+
+void
+meta_window_set_progress (MetaWindow *window,
+                          int progress)
+{
+    if (progress < -1 || progress > 100) {
+        return;
+    }
+    window->progress = progress;
+    g_signal_emit (window, window_signals[WORKSPACE_CHANGED], 0,
+                     progress);
+
+}
+
