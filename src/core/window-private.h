@@ -380,6 +380,9 @@ struct _MetaWindow
   /* if TRUE, window is attached to its parent */
   guint attached : 1;
 
+/* if TRUE, we are freezing updates during a resize */
+  guint updates_frozen_for_resize : 1;
+
   /* if non-NULL, the bounds of the window frame */
   cairo_region_t *frame_bounds;
 
@@ -767,6 +770,8 @@ inline void meta_window_get_size_limits   (const MetaWindow        *window,
                                           MetaRectangle *max_size);
 
 void meta_window_compute_tile_match (MetaWindow *window);
+
+gboolean meta_window_updates_are_frozen (MetaWindow *window);
 
 HUDTileRestrictions meta_window_get_tile_restrictions (MetaWindow *window);
 

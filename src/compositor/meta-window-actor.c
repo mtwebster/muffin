@@ -110,6 +110,8 @@ struct _MetaWindowActorPrivate
   guint             recompute_unfocused_shadow : 1;
   guint		    size_changed           : 1;
 
+  guint             updates_frozen         : 1;
+
   guint		    needs_destroy	   : 1;
 
   guint             no_shadow              : 1;
@@ -967,6 +969,13 @@ meta_window_actor_thaw (MetaWindowActor *self)
   if (self->priv->freeze_count)
     return;
 
+  /* We ignore moves and resizes on frozen windows */
+  meta_window_actor_sync_actor_position (self);
+
+  /* We do this now since we might be going right back into the
+   * frozen state */
+  meta_window_actor_pre_paint (self);
+
   /* Since we ignore damage events while a window is frozen for certain effects
    * we may need to issue an update_area() covering the whole pixmap if we
    * don't know what real damage has happened. */
@@ -1316,6 +1325,12 @@ meta_window_actor_destroy (MetaWindowActor *self)
     clutter_actor_destroy (CLUTTER_ACTOR (self));
 }
 
+static gboolean
+is_frozen (MetaWindowActor *self)
+{
+  return self->priv->freeze_count ? TRUE : FALSE;
+}
+
 LOCAL_SYMBOL void
 meta_window_actor_sync_actor_position (MetaWindowActor *self)
 {
@@ -1323,6 +1338,9 @@ meta_window_actor_sync_actor_position (MetaWindowActor *self)
   MetaRectangle window_rect;
 
   meta_window_get_input_rect (priv->window, &window_rect);
+
+  if (is_frozen (self))
+    return;
 
   if (priv->last_width != window_rect.width ||
       priv->last_height != window_rect.height)
@@ -1550,6 +1568,9 @@ meta_window_actor_new (MetaWindow *window)
   priv->mapped = meta_window_toplevel_is_mapped (priv->window);
   if (priv->mapped)
     meta_window_actor_queue_create_pixmap (self);
+
+  meta_window_actor_set_updates_frozen (self,
+                                        meta_window_updates_are_frozen (priv->window));
 
   meta_window_actor_sync_actor_position (self);
 
@@ -2013,12 +2034,6 @@ check_needs_shadow (MetaWindowActor *self)
     meta_shadow_unref (old_shadow);
 }
 
-static gboolean
-is_frozen (MetaWindowActor *self)
-{
-  return self->priv->freeze_count ? TRUE : FALSE;
-}
-
 LOCAL_SYMBOL void
 meta_window_actor_process_damage (MetaWindowActor    *self,
                                   XDamageNotifyEvent *event)
@@ -2404,4 +2419,22 @@ meta_window_actor_update_opacity (MetaWindowActor *self)
 
   self->priv->opacity = opacity;
   clutter_actor_set_opacity (self->priv->actor, opacity);
+}
+
+void
+meta_window_actor_set_updates_frozen (MetaWindowActor *self,
+                                      gboolean         updates_frozen)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+
+  updates_frozen = updates_frozen != FALSE;
+
+  if (priv->updates_frozen != updates_frozen)
+    {
+      priv->updates_frozen = updates_frozen;
+      if (updates_frozen)
+        meta_window_actor_freeze (self);
+      else
+        meta_window_actor_thaw (self);
+    }
 }
