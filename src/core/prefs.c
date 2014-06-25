@@ -1228,7 +1228,9 @@ meta_prefs_get_raise_on_click (void)
   /* Force raise_on_click on for click-to-focus, as requested by Havoc
    * in #326156.
    */
-  return raise_on_click || focus_mode == C_DESKTOP_FOCUS_MODE_CLICK;
+  return raise_on_click ||
+         focus_mode == C_DESKTOP_FOCUS_MODE_CLICK ||
+         focus_mode == C_DESKTOP_FOCUS_MODE_OSX;
 }
 
 const char*

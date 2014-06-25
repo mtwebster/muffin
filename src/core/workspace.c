@@ -1251,7 +1251,8 @@ meta_workspace_focus_default_window (MetaWorkspace *workspace,
     }
 
 
-  if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_CLICK ||
+  if ((meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_CLICK ||
+       meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_OSX) ||
       !workspace->screen->display->mouse_mode)
     focus_ancestor_or_top_window (workspace, not_this_one, timestamp);
   else
@@ -1346,7 +1347,8 @@ focus_ancestor_or_top_window (MetaWorkspace *workspace,
           meta_window_focus (ancestor, timestamp);
 
           /* Also raise the window if in click-to-focus */
-          if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_CLICK)
+          if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_CLICK ||
+              meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_OSX)
             meta_window_raise (ancestor);
 
           return;

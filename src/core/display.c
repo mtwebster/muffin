@@ -2000,8 +2000,19 @@ event_callback (XEvent   *event,
                    !meta_window_same_application (window,
                                                   display->focus_window)))
                 mode = AsyncPointer; /* eat focus click */
-              else
-                mode = ReplayPointer; /* give event back */
+              else {
+                if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_OSX &&
+                    !window->has_focus &&
+                    window->type != META_WINDOW_DOCK &&
+                    window->type != META_WINDOW_DESKTOP)
+                  {
+                    meta_window_focus (window, event->xbutton.time);
+                    meta_window_raise (window);
+                    mode = AsyncPointer;
+                  }
+                else
+                  mode = ReplayPointer; /* give event back */
+              }
 
               meta_verbose ("Allowing events mode %s time %u\n",
                             mode == AsyncPointer ? "AsyncPointer" : "ReplayPointer",
@@ -2131,6 +2142,7 @@ event_callback (XEvent   *event,
                 }
               break;
             case C_DESKTOP_FOCUS_MODE_CLICK:
+            case C_DESKTOP_FOCUS_MODE_OSX:
               break;
             }
           
