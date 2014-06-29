@@ -2016,6 +2016,7 @@ event_callback (XEvent   *event,
                 mode = AsyncPointer; /* eat focus click */
               else {
                 if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_OSX &&
+                    event->xbutton.button == Button1 &&
                     !window->has_focus &&
                     window->type != META_WINDOW_DOCK &&
                     window->type != META_WINDOW_DESKTOP &&
