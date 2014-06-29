@@ -1617,6 +1617,20 @@ handle_net_restack_window (MetaDisplay* display,
 }
 #endif
 
+static gboolean
+is_fromto_same_pid_utility_window (MetaDisplay *display, MetaWindow *window)
+{
+    MetaWindow *current_fw;
+
+    current_fw = meta_display_get_focus_window (display);
+
+    if (meta_window_get_pid (current_fw) != meta_window_get_pid (window))
+        return FALSE;
+
+    return (current_fw->type == META_WINDOW_UTILITY && window->type == META_WINDOW_NORMAL) ||
+           (current_fw->type == META_WINDOW_NORMAL && window->type == META_WINDOW_UTILITY);
+}
+
 /*
  * This is the most important function in the whole program. It is the heart,
  * it is the nexus, it is the Grand Central Station of Muffin's world.
@@ -2004,7 +2018,8 @@ event_callback (XEvent   *event,
                 if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_OSX &&
                     !window->has_focus &&
                     window->type != META_WINDOW_DOCK &&
-                    window->type != META_WINDOW_DESKTOP)
+                    window->type != META_WINDOW_DESKTOP &&
+                    !is_fromto_same_pid_utility_window (display, window))
                   {
                     meta_window_focus (window, event->xbutton.time);
                     meta_window_raise (window);
