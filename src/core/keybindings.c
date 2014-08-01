@@ -3102,9 +3102,6 @@ handle_panel (MetaDisplay    *display,
   switch (action)
     {
     /* FIXME: The numbers are wrong */
-    case META_KEYBINDING_ACTION_PANEL_MAIN_MENU:
-      action_atom = display->atom__GNOME_PANEL_ACTION_MAIN_MENU;
-      break;
     case META_KEYBINDING_ACTION_PANEL_RUN_DIALOG:
       action_atom = display->atom__GNOME_PANEL_ACTION_RUN_DIALOG;
       break;
@@ -4176,13 +4173,6 @@ init_builtin_key_bindings (MetaDisplay *display)
                           META_KEY_BINDING_NONE,
                           META_KEYBINDING_ACTION_SHOW_DESKTOP,
                           handle_show_desktop, 0);
-
-  add_builtin_keybinding (display,
-                          "panel-main-menu",
-                          SCHEMA_MUFFIN_KEYBINDINGS,
-                          META_KEY_BINDING_NONE,
-                          META_KEYBINDING_ACTION_PANEL_MAIN_MENU,
-                          handle_panel, META_KEYBINDING_ACTION_PANEL_MAIN_MENU);
 
   add_builtin_keybinding (display,
                           "panel-run-dialog",
