@@ -489,7 +489,7 @@ place_window_if_needed(MetaWindow     *window,
       MetaWorkspace *cur_workspace;
       const MetaMonitorInfo *monitor_info;
 
-      meta_window_get_outer_rect (window, &placed_rect);
+      meta_window_get_frame_rect (window, &placed_rect);
 
       meta_window_place (window, info->orig.x, info->orig.y,
                          &placed_rect.x, &placed_rect.y);
@@ -739,7 +739,7 @@ constrain_modal_dialog (MetaWindow         *window,
   child_rect = info->current;
   extend_by_frame (window, &child_rect);
 
-  meta_window_get_outer_rect (parent, &parent_rect);
+  meta_window_get_frame_rect (parent, &parent_rect);
 
   child_rect.x = parent_rect.x + (parent_rect.width / 2 - child_rect.width / 2);
   child_rect.y = parent_rect.y + (parent_rect.height / 2 - child_rect.height / 2);
@@ -817,7 +817,7 @@ constrain_maximization (MetaWindow         *window,
             MetaStrut *strut = g_slice_new0 (MetaStrut);
             MetaSide side;
             MetaRectangle rect;
-            meta_window_get_outer_rect (META_WINDOW (tmp->data), &rect);
+            meta_window_get_frame_rect (META_WINDOW (tmp->data), &rect);
             side = meta_window_get_tile_side (META_WINDOW (tmp->data));
             strut->rect = rect;
             strut->side = side;
@@ -907,7 +907,7 @@ constrain_tiling (MetaWindow         *window,
   else
     return TRUE;
 
-  meta_window_get_outer_rect (window, &actual_position);
+  meta_window_get_frame_rect (window, &actual_position);
 
   if (window->custom_snap_size) {
       switch (window->tile_mode) {

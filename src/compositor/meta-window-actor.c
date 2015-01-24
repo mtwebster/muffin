@@ -2032,7 +2032,7 @@ meta_window_actor_process_damage (MetaWindowActor    *self,
   if (meta_window_is_fullscreen (priv->window) && g_list_last (info->windows)->data == self && !priv->unredirected)
     {
       MetaRectangle window_rect;
-      meta_window_get_outer_rect (priv->window, &window_rect);
+      meta_window_get_frame_rect (priv->window, &window_rect);
 
       if (window_rect.x == event->area.x &&
           window_rect.y == event->area.y &&
@@ -2128,7 +2128,7 @@ update_corners (MetaWindowActor   *self,
       return;
     }
 
-  meta_window_get_outer_rect (priv->window, &outer);
+  meta_window_get_frame_rect (priv->window, &outer);
 
   meta_frame_get_corner_radiuses (priv->window->frame,
                                   &top_left,

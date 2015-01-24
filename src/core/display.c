@@ -1537,7 +1537,7 @@ window_raise_with_delay_callback (void *data)
 				   &root_x, &root_y, &x, &y, &mask);
       meta_error_trap_pop (window->display);
 
-      meta_window_get_outer_rect (window, &frame_rect);
+      meta_window_get_frame_rect (window, &frame_rect);
       point_in_window = POINT_IN_RECT (root_x, root_y, frame_rect);
 
       if (same_screen && point_in_window)
@@ -1928,7 +1928,7 @@ event_callback (XEvent   *event,
                   MetaRectangle frame_rect;
                   MetaGrabOp op;
 
-                  meta_window_get_outer_rect (window, &frame_rect);
+                  meta_window_get_frame_rect (window, &frame_rect);
 
                   west = event->xbutton.x_root < (frame_rect.x + 1 * frame_rect.width / 3);
                   east = event->xbutton.x_root > (frame_rect.x + 2 * frame_rect.width / 3);

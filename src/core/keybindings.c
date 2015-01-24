@@ -2824,7 +2824,7 @@ handle_move_to_corner_backend (MetaDisplay    *display,
   int new_x, new_y;
 
   meta_window_get_work_area_all_monitors (window, &work_area);
-  meta_window_get_outer_rect (window, &outer);
+  meta_window_get_frame_rect (window, &outer);
 
   if (xchange) {
     new_x = work_area.x + (to_right ?
@@ -2950,7 +2950,7 @@ handle_move_to_center  (MetaDisplay    *display,
   int frame_width, frame_height;
 
   meta_window_get_work_area_all_monitors (window, &work_area);
-  meta_window_get_outer_rect (window, &outer);
+  meta_window_get_frame_rect (window, &outer);
   meta_window_get_position (window, &orig_x, &orig_y);
 
   frame_width = (window->frame ? window->frame->child_x : 0);
@@ -3753,8 +3753,8 @@ handle_raise_or_lower (MetaDisplay    *display,
       
       if (above->mapped)
         {
-          meta_window_get_outer_rect (window, &win_rect);
-          meta_window_get_outer_rect (above, &above_rect);
+          meta_window_get_frame_rect (window, &win_rect);
+          meta_window_get_frame_rect (above, &above_rect);
           
           /* Check if obscured */
           if (meta_rectangle_intersect (&win_rect, &above_rect, &tmp))

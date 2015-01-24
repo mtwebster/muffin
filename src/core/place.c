@@ -53,8 +53,8 @@ northwestcmp (gconstpointer a, gconstpointer b)
   int from_origin_b;
   int ax, ay, bx, by;
 
-  meta_window_get_outer_rect (aw, &a_frame);
-  meta_window_get_outer_rect (bw, &b_frame);
+  meta_window_get_frame_rect (aw, &a_frame);
+  meta_window_get_frame_rect (bw, &b_frame);
   ax = a_frame.x;
   ay = a_frame.y;
   bx = b_frame.x;
@@ -176,7 +176,7 @@ find_next_cascade (MetaWindow *window,
   
   /* Find first cascade position that's not used. */
   
-  meta_window_get_outer_rect (window, &frame_rect);
+  meta_window_get_frame_rect (window, &frame_rect);
   window_width = frame_rect.width;
   window_height = frame_rect.height;
   
@@ -191,7 +191,7 @@ find_next_cascade (MetaWindow *window,
       w = tmp->data;
 
       /* we want frame position, not window position */
-      meta_window_get_outer_rect (w, &w_frame_rect);
+      meta_window_get_frame_rect (w, &w_frame_rect);
       wx = w_frame_rect.x;
       wy = w_frame_rect.y;
       
@@ -273,8 +273,8 @@ find_most_freespace (MetaWindow *window,
   MetaRectangle outer;
 
   meta_window_get_work_area_current_monitor (focus_window, &work_area);
-  meta_window_get_outer_rect (focus_window, &avoid);
-  meta_window_get_outer_rect (window, &outer);
+  meta_window_get_frame_rect (focus_window, &avoid);
+  meta_window_get_frame_rect (window, &outer);
 
   /* Find the areas of choosing the various sides of the focus window */
   max_width  = MIN (avoid.width, outer.width);
@@ -358,8 +358,8 @@ window_overlaps_focus_window (MetaWindow *window)
   if (focus_window == NULL)
     return FALSE;
 
-  meta_window_get_outer_rect (window, &window_frame);
-  meta_window_get_outer_rect (focus_window, &focus_frame);
+  meta_window_get_frame_rect (window, &window_frame);
+  meta_window_get_frame_rect (focus_window, &focus_frame);
 
   return meta_rectangle_intersect (&window_frame,
                                    &focus_frame,
@@ -439,7 +439,7 @@ rectangle_overlaps_some_window (MetaRectangle *rect,
         case META_WINDOW_UTILITY:
         case META_WINDOW_TOOLBAR:
         case META_WINDOW_MENU:
-          meta_window_get_outer_rect (other, &other_rect);
+          meta_window_get_frame_rect (other, &other_rect);
           
           if (meta_rectangle_intersect (rect, &other_rect, &dest))
             return TRUE;
@@ -461,8 +461,8 @@ leftmost_cmp (gconstpointer a, gconstpointer b)
   MetaRectangle b_frame;
   int ax, bx;
 
-  meta_window_get_outer_rect (aw, &a_frame);
-  meta_window_get_outer_rect (bw, &b_frame);
+  meta_window_get_frame_rect (aw, &a_frame);
+  meta_window_get_frame_rect (bw, &b_frame);
   ax = a_frame.x;
   bx = b_frame.x;
 
@@ -483,8 +483,8 @@ topmost_cmp (gconstpointer a, gconstpointer b)
   MetaRectangle b_frame;
   int ay, by;
 
-  meta_window_get_outer_rect (aw, &a_frame);
-  meta_window_get_outer_rect (bw, &b_frame);
+  meta_window_get_frame_rect (aw, &a_frame);
+  meta_window_get_frame_rect (bw, &b_frame);
   ay = a_frame.y;
   by = b_frame.y;
 
@@ -558,7 +558,7 @@ find_first_fit (MetaWindow *window,
   right_sorted = g_list_sort (right_sorted, topmost_cmp);
   right_sorted = g_list_sort (right_sorted, leftmost_cmp);
   
-  meta_window_get_outer_rect (window, &rect);
+  meta_window_get_frame_rect (window, &rect);
 
 #ifdef WITH_VERBOSE_MODE
     {
@@ -593,7 +593,7 @@ find_first_fit (MetaWindow *window,
         MetaWindow *w = tmp->data;
         MetaRectangle outer_rect;
 
-        meta_window_get_outer_rect (w, &outer_rect);
+        meta_window_get_frame_rect (w, &outer_rect);
       
         rect.x = outer_rect.x;
         rect.y = outer_rect.y + outer_rect.height;
@@ -619,7 +619,7 @@ find_first_fit (MetaWindow *window,
         MetaWindow *w = tmp->data;
         MetaRectangle outer_rect;
    
-        meta_window_get_outer_rect (w, &outer_rect);
+        meta_window_get_frame_rect (w, &outer_rect);
      
         rect.x = outer_rect.x + outer_rect.width;
         rect.y = outer_rect.y;
@@ -772,8 +772,8 @@ meta_window_place (MetaWindow        *window,
         {
           MetaRectangle frame_rect, parent_frame_rect;
 
-          meta_window_get_outer_rect (window, &frame_rect);
-          meta_window_get_outer_rect (parent, &parent_frame_rect);
+          meta_window_get_frame_rect (window, &frame_rect);
+          meta_window_get_frame_rect (parent, &parent_frame_rect);
 
           y = parent_frame_rect.y;
 
@@ -808,7 +808,7 @@ meta_window_place (MetaWindow        *window,
       int w, h;
       MetaRectangle frame_rect;
 
-      meta_window_get_outer_rect (window, &frame_rect);
+      meta_window_get_frame_rect (window, &frame_rect);
 
       /* Warning, this function is a round trip! */
       xi = meta_screen_get_current_monitor (window->screen);
@@ -893,7 +893,7 @@ meta_window_place (MetaWindow        *window,
       meta_window_get_work_area_for_monitor (window,
                                              xi->number,
                                              &workarea);      
-      meta_window_get_outer_rect (window, &outer);
+      meta_window_get_frame_rect (window, &outer);
       
       /* If the window is bigger than the screen, then automaximize.  Do NOT
        * auto-maximize the directions independently.  See #419810.
