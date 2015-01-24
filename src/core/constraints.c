@@ -752,27 +752,28 @@ constrain_modal_dialog (MetaWindow         *window,
 {
   int x, y;
   MetaWindow *parent = meta_window_get_transient_for (window);
+  MetaRectangle child_rect, parent_rect;
   gboolean constraint_already_satisfied;
 
   if (!meta_window_is_attached_dialog (window))
     return TRUE;
 
-  x = parent->rect.x + (parent->rect.width / 2  - info->current.width / 2);
-  y = 0;
-  if (parent->frame)
-    {
-      MetaFrameBorders borders;
+  /* We want to center the dialog on the parent, including the decorations
+     for both of them. info->current is in client X window coordinates, so we need
+     to convert them to frame coordinates, apply the centering and then
+     convert back to client.
+   */
 
-      x += parent->frame->rect.x;
-      y += parent->frame->rect.y;
+  child_rect = info->current;
+  extend_by_frame (&child_rect, info->borders);
 
-      meta_frame_calc_borders (parent->frame, &borders);
-      y += borders.total.top;
+  meta_window_get_outer_rect (parent, &parent_rect);
 
-      y += info->borders->visible.top;
-    }
-  else
-    y = parent->rect.y + info->borders->visible.top;
+  child_rect.x = parent_rect.x + (parent_rect.width / 2 - child_rect.width / 2);
+  child_rect.y = parent_rect.y + (parent_rect.height / 2 - child_rect.height / 2);
+  unextend_by_frame (&child_rect, info->borders);
+  x = child_rect.x;
+  y = child_rect.y;
 
   constraint_already_satisfied = (x == info->current.x) && (y == info->current.y);
 
