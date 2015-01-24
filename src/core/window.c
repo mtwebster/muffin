@@ -5900,6 +5900,30 @@ meta_window_get_tile_side (MetaWindow *window)
     return side;
 }
 
+void
+meta_window_get_titlebar_rect (MetaWindow *window,
+                               MetaRectangle *rect)
+{
+  meta_window_get_frame_rect (window, rect);
+
+  /* The returned rectangle is relative to the frame rect. */
+  rect->x = 0;
+  rect->y = 0;
+
+  if (window->frame)
+    {
+      rect->height = window->frame->child_y;
+    }
+  else
+    {
+      /* Pick an arbitrary height for a titlebar. We might want to
+       * eventually have CSD windows expose their borders to us. */
+       rect->height = 50;
+      g_printerr ("CSD rect height: %d       %s\n", rect->height, window->title);
+
+    }
+}
+
 const char*
 meta_window_get_startup_id (MetaWindow *window)
 {
@@ -8909,11 +8933,10 @@ meta_window_titlebar_is_onscreen (MetaWindow *window)
 
   /* Titlebar can't be offscreen if there is no titlebar... */
   if (!window->frame)
-    return FALSE;
+    return TRUE;
 
   /* Get the rectangle corresponding to the titlebar */
-  meta_window_get_frame_rect (window, &titlebar_rect);
-  titlebar_rect.height = window->frame->child_y;
+  meta_window_get_titlebar_rect (window, &titlebar_rect);
 
   /* Run through the spanning rectangles for the screen and see if one of
    * them overlaps with the titlebar sufficiently to consider it onscreen.
@@ -9287,17 +9310,16 @@ update_move (MetaWindow  *window,
 
       display->grab_initial_window_pos.x =
         x - window->saved_rect.width * prop;
-      display->grab_initial_window_pos.y = y;
 
       if (window->frame)
         {
-          display->grab_initial_window_pos.y += window->frame->child_y / 2;
+          display->grab_initial_window_pos.y = y + (window->frame->child_y / 2);
+          display->grab_anchor_root_x = x;
+          display->grab_anchor_root_y = y;
         }
 
       window->saved_rect.x = display->grab_initial_window_pos.x;
       window->saved_rect.y = display->grab_initial_window_pos.y;
-      display->grab_anchor_root_x = x;
-      display->grab_anchor_root_y = y;
 
       meta_window_unmaximize (window,
                               META_MAXIMIZE_HORIZONTAL |
