@@ -118,8 +118,7 @@ typedef struct
 {
   MetaRectangle        orig;
   MetaRectangle        current;
-  MetaFrameBorders    *borders;
-  gboolean             must_free_borders;
+
   ActionType           action_type;
   gboolean             is_user_action;
 
@@ -195,7 +194,6 @@ static gboolean constrain_partially_onscreen (MetaWindow         *window,
 
 static void setup_constraint_info        (ConstraintInfo      *info,
                                           MetaWindow          *window,
-                                          MetaFrameBorders    *orig_borders,
                                           MetaMoveResizeFlags  flags,
                                           int                  resize_gravity,
                                           const MetaRectangle *orig,
@@ -275,7 +273,6 @@ do_all_constraints (MetaWindow         *window,
 
 LOCAL_SYMBOL void
 meta_window_constrain (MetaWindow          *window,
-                       MetaFrameBorders    *orig_borders,
                        MetaMoveResizeFlags  flags,
                        int                  resize_gravity,
                        const MetaRectangle *orig,
@@ -298,7 +295,6 @@ meta_window_constrain (MetaWindow          *window,
 
   setup_constraint_info (&info,
                          window, 
-                         orig_borders,
                          flags,
                          resize_gravity,
                          orig,
@@ -328,19 +324,11 @@ meta_window_constrain (MetaWindow          *window,
    * if this was a user move or user move-and-resize operation.
    */
   update_onscreen_requirements (window, &info);
-
-  /* Ew, what an ugly way to do things.  Destructors (in a real OOP language,
-   * not gobject-style--gobject would be more pain than it's worth) or
-   * smart pointers would be so much nicer here.  *shrug*
-   */
-  if (info.must_free_borders)
-    g_free (info.borders);
 }
 
 static void
 setup_constraint_info (ConstraintInfo      *info,
                        MetaWindow          *window,
-                       MetaFrameBorders    *orig_borders,
                        MetaMoveResizeFlags  flags,
                        int                  resize_gravity,
                        const MetaRectangle *orig,
@@ -351,18 +339,6 @@ setup_constraint_info (ConstraintInfo      *info,
 
   info->orig    = *orig;
   info->current = *new;
-
-  /* Create a fake frame geometry if none really exists */
-  if (orig_borders && !window->fullscreen)
-    {
-      info->borders = orig_borders;
-      info->must_free_borders = FALSE;
-    }
-  else
-    {
-      info->borders = g_new0 (MetaFrameBorders, 1);
-      info->must_free_borders = TRUE;
-    }
 
   if (flags & META_IS_MOVE_ACTION && flags & META_IS_RESIZE_ACTION)
     info->action_type = ACTION_MOVE_AND_RESIZE;
@@ -515,7 +491,7 @@ place_window_if_needed(MetaWindow     *window,
 
       meta_window_get_outer_rect (window, &placed_rect);
 
-      meta_window_place (window, info->borders, info->orig.x, info->orig.y,
+      meta_window_place (window, info->orig.x, info->orig.y,
                          &placed_rect.x, &placed_rect.y);
       did_placement = TRUE;
 
@@ -578,10 +554,6 @@ place_window_if_needed(MetaWindow     *window,
                  META_MAXIMIZE_HORIZONTAL : 0 ) |
                 (window->maximize_vertically_after_placement ?
                  META_MAXIMIZE_VERTICAL : 0), &info->current);
-
-          /* maximization may have changed frame geometry */
-          if (!window->fullscreen)
-            meta_frame_calc_borders (window->frame, info->borders);
 
           if (window->fullscreen_after_placement)
             {
@@ -708,10 +680,13 @@ update_onscreen_requirements (MetaWindow     *window,
    */
   if (window->frame && window->decorated)
     {
+      MetaFrameBorders borders;
       MetaRectangle titlebar_rect;
 
+      meta_frame_calc_borders (window->frame, &borders);
+
       titlebar_rect = info->current;
-      titlebar_rect.height = info->borders->visible.top;
+      titlebar_rect.height = borders.visible.top;
       old = window->require_titlebar_visible;
       window->require_titlebar_visible =
         meta_rectangle_overlaps_with_region (info->usable_screen_region,
@@ -873,7 +848,7 @@ constrain_maximization (MetaWindow         *window,
   /* Check min size constraints; max size constraints are ignored for maximized
    * windows, as per bug 327543.
    */
-  meta_window_get_size_limits (window, info->borders, FALSE, &min_size, &max_size);
+  meta_window_get_size_limits (window, FALSE, &min_size, &max_size);
   hminbad = target_size.width < min_size.width && window->maximized_horizontally;
   vminbad = target_size.height < min_size.height && window->maximized_vertically;
   if (hminbad || vminbad)
@@ -1028,7 +1003,7 @@ constrain_tiling (MetaWindow         *window,
   /* Check min size constraints; max size constraints are ignored as for
    * maximized windows.
    */
-  meta_window_get_size_limits (window, info->borders, FALSE, &min_size, &max_size);
+  meta_window_get_size_limits (window, FALSE, &min_size, &max_size);
   hminbad = target_size.width < min_size.width;
   vminbad = target_size.height < min_size.height;
   if (hminbad || vminbad)
@@ -1071,7 +1046,7 @@ constrain_fullscreen (MetaWindow         *window,
 
   monitor = info->entire_monitor;
 
-  meta_window_get_size_limits (window, info->borders, FALSE, &min_size, &max_size);
+  meta_window_get_size_limits (window, FALSE, &min_size, &max_size);
   too_big =   !meta_rectangle_could_fit_rect (&monitor, &min_size);
   too_small = !meta_rectangle_could_fit_rect (&max_size, &monitor);
   if (too_big || too_small)
@@ -1181,7 +1156,7 @@ constrain_size_limits (MetaWindow         *window,
     return TRUE;
 
   /* Determine whether constraint is already satisfied; exit if it is */
-  meta_window_get_size_limits (window, info->borders, FALSE, &min_size, &max_size);
+  meta_window_get_size_limits (window, FALSE, &min_size, &max_size);
   /* We ignore max-size limits for maximized windows; see #327543 */
   if (window->maximized_horizontally)
     max_size.width = MAX (max_size.width, info->current.width);
@@ -1373,7 +1348,7 @@ do_screen_and_monitor_relative_constraints (
 
   /* Determine whether constraint applies; exit if it doesn't */
   how_far_it_can_be_smushed = info->current;
-  meta_window_get_size_limits (window, info->borders, TRUE, &min_size, &max_size);
+  meta_window_get_size_limits (window, TRUE, &min_size, &max_size);
   extend_by_frame (window, &info->current);
 
   if (info->action_type != ACTION_MOVE)
@@ -1530,8 +1505,11 @@ constrain_titlebar_visible (MetaWindow         *window,
    */
   if (window->frame)
     {
-      bottom_amount = info->current.height + info->borders->visible.bottom;
-      vert_amount_onscreen = info->borders->visible.top;
+      MetaFrameBorders borders;
+      meta_frame_calc_borders (window->frame, &borders);
+
+      bottom_amount = info->current.height + borders.visible.bottom;
+      vert_amount_onscreen = borders.visible.top;
     }
   else
     bottom_amount = vert_amount_offscreen;
@@ -1605,8 +1583,11 @@ constrain_partially_onscreen (MetaWindow         *window,
    */
   if (window->frame)
     {
-      bottom_amount = info->current.height + info->borders->visible.bottom;
-      vert_amount_onscreen = info->borders->visible.top;
+      MetaFrameBorders borders;
+      meta_frame_calc_borders (window->frame, &borders);
+
+      bottom_amount = info->current.height + borders.visible.bottom;
+      vert_amount_onscreen = borders.visible.top;
     }
   else
     bottom_amount = vert_amount_offscreen;

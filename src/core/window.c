@@ -4922,7 +4922,6 @@ meta_window_move_resize_internal (MetaWindow          *window,
     }
 
   meta_window_constrain (window,
-                         window->frame ? &borders : NULL,
                          flags,
                          gravity,
                          &old_rect,
@@ -5722,6 +5721,11 @@ meta_window_client_rect_to_frame_rect (MetaWindow *window,
 
   *client_rect = *frame_rect;
 
+  /* The support for G_MAXINT here to mean infinity is a convenience for
+   * constraints.c:get_size_limits() and not something that we provide
+   * in other locations or document.
+   */
+
   if (window->frame)
     {
       MetaFrameBorders borders;
@@ -5729,8 +5733,10 @@ meta_window_client_rect_to_frame_rect (MetaWindow *window,
 
       client_rect->x -= borders.visible.left;
       client_rect->y -= borders.visible.top;
-      client_rect->width += borders.visible.left + borders.visible.right;
-      client_rect->height += borders.visible.top + borders.visible.bottom;
+      if (client_rect->width != G_MAXINT)
+        client_rect->width += borders.visible.left + borders.visible.right;
+      if (client_rect->height != G_MAXINT)
+        client_rect->height += borders.visible.top + borders.visible.bottom;
     }
   else
     {
@@ -5739,8 +5745,10 @@ meta_window_client_rect_to_frame_rect (MetaWindow *window,
           const GtkBorder *extents = &window->custom_frame_extents;
           client_rect->x += extents->left;
           client_rect->y += extents->top;
-          client_rect->width -= extents->left + extents->right;
-          client_rect->height -= extents->top + extents->bottom;
+          if (client_rect->width != G_MAXINT)
+            client_rect->width -= extents->left + extents->right;
+          if (client_rect->height != G_MAXINT)
+            client_rect->height -= extents->top + extents->bottom;
         }
     }
 }
@@ -9340,7 +9348,7 @@ update_move (MetaWindow  *window,
     gboolean hminbad = FALSE;
     gboolean vminbad = FALSE;
     if (window->tile_mode != META_TILE_NONE) {
-        meta_window_get_size_limits (window, NULL, FALSE, &min_size, &max_size);
+        meta_window_get_size_limits (window, FALSE, &min_size, &max_size);
         meta_window_get_current_tile_area (window, &target_size);
         hminbad = target_size.width < min_size.width;
         vminbad = target_size.height < min_size.height;
@@ -11668,8 +11676,7 @@ meta_window_get_tile_type (MetaWindow *window)
 }
 
 inline void
-meta_window_get_size_limits (const MetaWindow        *window,
-                             const MetaFrameBorders *borders,
+meta_window_get_size_limits (MetaWindow       *window,
                                    gboolean          include_frame,
                                    MetaRectangle    *min_size,
                                    MetaRectangle    *max_size)
@@ -11677,6 +11684,7 @@ meta_window_get_size_limits (const MetaWindow        *window,
   /* We pack the results into MetaRectangle structs just for convienience; we
    * don't actually use the position of those rects.
    */
+  min_size->x = min_size->y = max_size->x = max_size->y = 0;
   min_size->width  = window->size_hints.min_width;
   min_size->height = window->size_hints.min_height;
   max_size->width  = window->size_hints.max_width;
@@ -11684,22 +11692,8 @@ meta_window_get_size_limits (const MetaWindow        *window,
 
   if (include_frame)
     {
-      int fw = borders->visible.left + borders->visible.right;
-      int fh = borders->visible.top + borders->visible.bottom;
-
-      min_size->width  += fw;
-      min_size->height += fh;
-      /* Do check to avoid overflow (e.g. max_size->width & max_size->height
-       * may be set to G_MAXINT by meta_set_normal_hints()).
-       */
-      if (max_size->width < (G_MAXINT - fw))
-        max_size->width += fw;
-      else
-        max_size->width = G_MAXINT;
-      if (max_size->height < (G_MAXINT - fh))
-        max_size->height += fh;
-      else
-        max_size->height = G_MAXINT;
+      meta_window_client_rect_to_frame_rect (window, min_size, min_size);
+      meta_window_client_rect_to_frame_rect (window, max_size, max_size);
     }
 }
 
