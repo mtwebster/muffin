@@ -5565,20 +5565,15 @@ meta_window_get_position (MetaWindow  *window,
                           int         *x,
                           int         *y)
 {
-  if (window->frame)
-    {
-      if (x)
-        *x = window->frame->rect.x + window->frame->child_x;
-      if (y)
-        *y = window->frame->rect.y + window->frame->child_y;
-    }
-  else
-    {
-      if (x)
-        *x = window->rect.x;
-      if (y)
-        *y = window->rect.y;
-    }
+  MetaRectangle frame_rect;
+
+  meta_window_get_frame_rect (window, &frame_rect);
+  meta_window_frame_rect_to_client_rect (window, &frame_rect, &frame_rect);
+
+  if (x)
+    *x = frame_rect.x;
+  if (y)
+    *y = frame_rect.y;
 }
 
 LOCAL_SYMBOL void
@@ -5919,8 +5914,6 @@ meta_window_get_titlebar_rect (MetaWindow *window,
       /* Pick an arbitrary height for a titlebar. We might want to
        * eventually have CSD windows expose their borders to us. */
        rect->height = 50;
-      g_printerr ("CSD rect height: %d       %s\n", rect->height, window->title);
-
     }
 }
 
