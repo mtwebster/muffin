@@ -1391,6 +1391,13 @@ do_screen_and_monitor_relative_constraints (
                                       &info->current);
 
   unextend_by_frame (window, &info->current);
+
+  if (meta_window_is_client_decorated (window))
+    {
+      const GtkBorder *extents = &window->custom_frame_extents;
+      info->current.y -= extents->top;
+    }
+
   return TRUE;
 }
 

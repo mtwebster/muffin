@@ -1156,6 +1156,7 @@ meta_window_edge_resistance_for_move (MetaWindow  *window,
   gboolean is_resize;
 
   meta_window_get_frame_rect (window, &old_outer);
+  // meta_window_frame_rect_to_client_rect (window, &old_outer, &old_outer);
 
   proposed_outer = old_outer;
   proposed_outer.x += (*new_x - old_x);
