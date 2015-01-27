@@ -717,7 +717,7 @@ update_onscreen_requirements (MetaWindow     *window,
   window->require_titlebar_visible =
     meta_rectangle_overlaps_with_region (info->usable_screen_region,
                                          &titlebar_rect);
-  g_printerr ("require: %s\n", window->require_titlebar_visible ? "TRUE" : "FALSE");
+
   if (old ^ window->require_titlebar_visible)
     meta_topic (META_DEBUG_GEOMETRY,
                 "require_titlebar_visible for %s toggled to %s\n",
@@ -1444,10 +1444,18 @@ do_screen_and_monitor_relative_constraints (
                                    info->fixed_directions,
                                    &info->current);
   else
-    /* For everything else, shove the rectangle into the relevant region */
-    meta_rectangle_shove_into_region (region_spanning_rectangles,
-                                      info->fixed_directions,
-                                      &info->current);
+    {
+      /* For everything else, shove the rectangle into the relevant region */
+      if (meta_window_is_client_decorated (window))
+        extend_by_frame (window, &info->current, info->borders);
+
+      meta_rectangle_shove_into_region (region_spanning_rectangles,
+                                        info->fixed_directions,
+                                        &info->current);
+
+      if (meta_window_is_client_decorated (window))
+        unextend_by_frame (window, &info->current, info->borders);
+    }
 
   unextend_by_frame (window, &info->current, info->borders);
   return TRUE;
@@ -1471,7 +1479,7 @@ constrain_to_single_monitor (MetaWindow         *window,
       window->type == META_WINDOW_DOCK      ||
       window->screen->n_monitor_infos == 1  ||
       !window->require_on_single_monitor    ||
-      !window->frame                        ||
+      (!window->frame && !meta_window_is_client_decorated (window)) ||
       info->is_user_action)
     return TRUE;
 
@@ -1520,6 +1528,7 @@ constrain_titlebar_visible (MetaWindow         *window,
   int bottom_amount;
   int horiz_amount_offscreen, vert_amount_offscreen;
   int horiz_amount_onscreen,  vert_amount_onscreen;
+  int scale = meta_prefs_get_ui_scale ();
 
   if (priority > PRIORITY_TITLEBAR_VISIBLE)
     return TRUE;
@@ -1550,8 +1559,8 @@ constrain_titlebar_visible (MetaWindow         *window,
    */
   horiz_amount_onscreen = info->current.width  / 4;
   vert_amount_onscreen  = info->current.height / 4;
-  horiz_amount_onscreen = CLAMP (horiz_amount_onscreen, 10, 75);
-  vert_amount_onscreen  = CLAMP (vert_amount_onscreen,  10, 75);
+  horiz_amount_onscreen = CLAMP (horiz_amount_onscreen, 10 * scale, 75 * scale);
+  vert_amount_onscreen  = CLAMP (vert_amount_onscreen,  10 * scale, 75 * scale);
   horiz_amount_offscreen = info->current.width - horiz_amount_onscreen;
   vert_amount_offscreen  = info->current.height - vert_amount_onscreen;
   horiz_amount_offscreen = MAX (horiz_amount_offscreen, 0);
@@ -1567,8 +1576,10 @@ constrain_titlebar_visible (MetaWindow         *window,
   else if (meta_window_is_client_decorated (window))
     {
       extend_by_frame (window, &info->current, info->borders);
-      vert_amount_onscreen = CSD_TITLEBAR_HEIGHT * meta_prefs_get_ui_scale (); /* Hardcoded for now, we don't get this from Gtk */
+      extend_by_frame (window, &info->current, info->borders);
+      vert_amount_onscreen = CSD_TITLEBAR_HEIGHT * scale; /* Hardcoded for now, we don't get this from Gtk */
       bottom_amount = vert_amount_offscreen = MAX ((info->current.height - vert_amount_onscreen), 0);
+      unextend_by_frame (window, &info->current, info->borders);
       unextend_by_frame (window, &info->current, info->borders);
     }
   else
@@ -1610,6 +1621,7 @@ constrain_partially_onscreen (MetaWindow         *window,
   int top_amount, bottom_amount;
   int horiz_amount_offscreen, vert_amount_offscreen;
   int horiz_amount_onscreen,  vert_amount_onscreen;
+  int scale = meta_prefs_get_ui_scale ();
 
   if (priority > PRIORITY_PARTIALLY_VISIBLE_ON_WORKAREA)
     return TRUE;
@@ -1631,8 +1643,8 @@ constrain_partially_onscreen (MetaWindow         *window,
    */
   horiz_amount_onscreen = info->current.width  / 4;
   vert_amount_onscreen  = info->current.height / 4;
-  horiz_amount_onscreen = CLAMP (horiz_amount_onscreen, 10, 75);
-  vert_amount_onscreen  = CLAMP (vert_amount_onscreen,  10, 75);
+  horiz_amount_onscreen = CLAMP (horiz_amount_onscreen, 10 * scale, 75 * scale);
+  vert_amount_onscreen  = CLAMP (vert_amount_onscreen,  10 * scale, 75 * scale);
   horiz_amount_offscreen = info->current.width - horiz_amount_onscreen;
   vert_amount_offscreen  = info->current.height - vert_amount_onscreen;
   horiz_amount_offscreen = MAX (horiz_amount_offscreen, 0);
@@ -1645,6 +1657,15 @@ constrain_partially_onscreen (MetaWindow         *window,
     {
       bottom_amount = info->current.height + info->borders->visible.bottom;
       vert_amount_onscreen = info->borders->visible.top;
+    }
+  else if (meta_window_is_client_decorated (window))
+    {
+      extend_by_frame (window, &info->current, info->borders);
+      extend_by_frame (window, &info->current, info->borders);
+      vert_amount_onscreen = CSD_TITLEBAR_HEIGHT * scale; /* Hardcoded for now, we don't get this from Gtk */
+      bottom_amount = vert_amount_offscreen = MAX ((info->current.height - vert_amount_onscreen), 0);
+      unextend_by_frame (window, &info->current, info->borders);
+      unextend_by_frame (window, &info->current, info->borders);
     }
   else
     bottom_amount = vert_amount_offscreen;

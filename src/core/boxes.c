@@ -286,7 +286,7 @@ meta_rectangle_overlap (const MetaRectangle *rect1,
 {
   g_return_val_if_fail (rect1 != NULL, FALSE);
   g_return_val_if_fail (rect2 != NULL, FALSE);
-g_printerr ("%d, %d, %d, %d......%d, %d, %d, %d\n", rect1->x, rect1->y, rect1->width, rect1->height, rect2->x, rect2->y, rect2->width, rect2->height);
+
   return !((rect1->x + rect1->width  <= rect2->x) ||
            (rect2->x + rect2->width  <= rect1->x) ||
            (rect1->y + rect1->height <= rect2->y) ||

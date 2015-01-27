@@ -94,7 +94,7 @@ enum {
 #define NUMBER_OF_QUEUES 3
 
 #define HUD_WIDTH 24
-#define CSD_TITLEBAR_HEIGHT 58
+#define CSD_TITLEBAR_HEIGHT 48
 
 struct _MetaWindow
 {
