@@ -3291,6 +3291,21 @@ meta_window_show (MetaWindow *window)
     }
 }
 
+/**
+ * meta_window_hide_no_effects:
+ * @window: a #MetaWindow
+ *
+ * Hides a window without any compositor effects, regardless of the
+ * user preference.
+ */
+
+void
+meta_window_hide_no_effects (MetaWindow *window)
+{
+    window->pending_compositor_effect = META_COMP_EFFECT_NONE;
+    meta_window_hide (window);
+}
+
 static void
 meta_window_hide (MetaWindow *window)
 {
