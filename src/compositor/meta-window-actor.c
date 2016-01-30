@@ -1476,6 +1476,8 @@ meta_window_actor_sync_actor_geometry (MetaWindowActor *self,
   if (is_frozen (self) && !did_placement)
     return;
 
+  meta_window_get_input_rect (priv->window, &window_rect);
+
   if (priv->size_changed)
     {
       meta_window_actor_queue_create_pixmap (self);
