@@ -31,8 +31,10 @@
 
 #include <config.h>
 
+#define COGL_ENABLE_EXPERIMENTAL_API
 #include <cogl/cogl-texture-pixmap-x11.h>
 
+#define CLUTTER_ENABLE_EXPERIMENTAL_API
 #include <clutter/clutter.h>
 
 #include <X11/Xatom.h>
