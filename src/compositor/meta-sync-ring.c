@@ -171,6 +171,8 @@ check_gl_extensions (void)
 
         version_ok = (major >= 2) && (minor > 2);
 
+        g_printerr ("openGL version %d.%d detected (GL3 Cogl Driver)\n", major, minor);
+
         int num_extensions, i;
         gboolean arb_sync = FALSE;
         gboolean x11_sync_object = FALSE;
@@ -207,6 +209,8 @@ check_gl_extensions (void)
          */
 
         gchar **split = g_strsplit (version_string, ".", 3);
+
+        g_printerr ("openGL version %s.%s detected (GL Cogl Driver)\n", split[0], split[1]);
 
         version_ok = (g_strv_length (split) >= 2) && (atoi (split[0]) >= 2) && (atoi (split[1]) > 2);
         g_strfreev (split);
@@ -246,7 +250,7 @@ load_required_symbols (void)
 
   if (!check_gl_extensions ())
     {
-      g_printerr ("MetaSyncRing: couldn't find required GL extensions, or the minimum safe openGL version was not met\n");
+      g_printerr ("MetaSyncRing disabled: couldn't find required GL extensions, or the minimum safe openGL version was not met\n");
       goto out;
     }
 
