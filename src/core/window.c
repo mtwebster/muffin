@@ -7466,6 +7466,8 @@ meta_window_notify_focus (MetaWindow *window,
                             window->colormap);
           meta_error_trap_pop (window->display);
 
+          /* move into FOCUSED_WINDOW layer */
+          meta_window_update_layer (window);
 
           /* Ungrab click to focus button since the sync grab can interfere
            * with some things you might do inside the focused window, by
@@ -7528,6 +7530,9 @@ meta_window_notify_focus (MetaWindow *window,
           XUninstallColormap (window->display->xdisplay,
                               window->colormap);
           meta_error_trap_pop (window->display);
+
+          /* move out of FOCUSED_WINDOW layer */
+          meta_window_update_layer (window);
 
           /* Re-grab for click to focus and raise-on-click, if necessary */
           if (meta_prefs_get_focus_mode () == C_DESKTOP_FOCUS_MODE_CLICK ||
