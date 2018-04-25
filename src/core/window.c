@@ -5862,18 +5862,10 @@ meta_window_get_input_rect (const MetaWindow *window,
     *rect = window->rect;
 }
 
-/**
- * meta_window_get_outer_rect:
- * @window: a #MetaWindow
- * @rect: (out): pointer to an allocated #MetaRectangle
- *
- * Gets the rectangle that bounds @window that is responsive to mouse events.
- * This includes only what is visible; it doesn't include any extra reactive
- * area we add to the edges of windows.
- */
-void
-meta_window_get_outer_rect (const MetaWindow *window,
-                            MetaRectangle    *rect)
+static void
+real_get_outer_rect (const MetaWindow *window,
+                     MetaRectangle    *rect,
+                     gboolean          visible_only)
 {
   if (window->frame)
     {
@@ -5890,7 +5882,7 @@ meta_window_get_outer_rect (const MetaWindow *window,
     {
       *rect = window->rect;
 
-      if (window->has_custom_frame_extents)
+      if (!visible_only && window->has_custom_frame_extents)
         {
           const GtkBorder *extents = &window->custom_frame_extents;
           rect->x += extents->left;
@@ -5900,6 +5892,41 @@ meta_window_get_outer_rect (const MetaWindow *window,
         }
     }
 }
+
+/**
+ * meta_window_get_outer_rect:
+ * @window: a #MetaWindow
+ * @rect: (out): pointer to an allocated #MetaRectangle
+ *
+ * Gets the rectangle that bounds @window that is responsive to mouse events.
+ * For legacy windows, includes only what is visible; it doesn't include any
+ * extra reactive area we add to the edges of windows.
+ *
+ * For client-side-decorated windows, this will include the GTK_FRAME_EXTENTS
+ * of the window, can be invisible.  See #meta_window_get_outer_visible_rect().
+ */
+void
+meta_window_get_outer_rect (const MetaWindow *window,
+                            MetaRectangle    *rect)
+{
+  real_get_outer_rect (window, rect, FALSE);
+}
+
+/**
+ * meta_window_get_outer_visible_rect:
+ * @window: a #MetaWindow
+ * @rect: (out): pointer to an allocated #MetaRectangle
+ *
+ * Gets the rectangle that bounds the visible portion of a window, regardless
+ * of whether it is muffin-decorated, or client-decorated.
+ */
+void
+meta_window_get_outer_visible_rect (const MetaWindow *window,
+                                    MetaRectangle    *rect)
+{
+  real_get_outer_rect (window, rect, TRUE);
+}
+
 
 MetaSide
 meta_window_get_tile_side (MetaWindow *window)
@@ -10532,6 +10559,7 @@ meta_window_same_client (MetaWindow *window,
 
 /**
  * meta_window_is_client_decorated:
+ * @window: a #MetaWindow
  *
  * Check if if the window has decorations drawn by the client.
  * (window->decorated refers only to whether we should add decorations)
@@ -12208,4 +12236,39 @@ meta_window_get_icon_name (MetaWindow *window)
     g_return_val_if_fail (META_IS_WINDOW (window), NULL);
 
     return window->theme_icon_name;
+}
+
+void
+meta_window_get_gtk_frame_extents (MetaWindow *window,
+                                   gint       *left,
+                                   gint       *right,
+                                   gint       *top,
+                                   gint       *bottom)
+{
+    g_return_if_fail (META_IS_WINDOW (window));
+
+    if (!window->has_custom_frame_extents)
+      {
+        return;
+      }
+
+    if (left)
+      {
+        *left = window->custom_frame_extents.left;
+      }
+
+    if (right)
+      {
+        *right = window->custom_frame_extents.right;
+      }
+
+    if (top)
+      {
+        *top = window->custom_frame_extents.top;
+      }
+
+    if (bottom)
+      {
+        *bottom = window->custom_frame_extents.bottom;
+      }
 }

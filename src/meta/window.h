@@ -77,6 +77,7 @@ gboolean meta_window_is_skip_taskbar (MetaWindow *window);
 MetaRectangle *meta_window_get_rect (MetaWindow *window);
 void meta_window_get_input_rect (const MetaWindow *window, MetaRectangle *rect);
 void meta_window_get_outer_rect (const MetaWindow *window, MetaRectangle *rect);
+void meta_window_get_outer_visible_rect (const MetaWindow *window, MetaRectangle    *rect);
 MetaScreen *meta_window_get_screen (MetaWindow *window);
 MetaDisplay *meta_window_get_display (MetaWindow *window);
 unsigned long meta_window_get_xwindow (MetaWindow *window);
@@ -187,4 +188,10 @@ MetaWindow *meta_window_get_tile_match (MetaWindow *window);
 gboolean meta_window_can_tile (MetaWindow *window, MetaTileMode mode);
 gboolean meta_window_tile (MetaWindow *window, MetaTileMode mode, gboolean snap);
 const char *meta_window_get_icon_name (MetaWindow *window);
+gboolean meta_window_is_client_decorated (MetaWindow *window);
+void meta_window_get_gtk_frame_extents (MetaWindow *window,
+                                        gint       *left,
+                                        gint       *right,
+                                        gint       *top,
+                                        gint       *bottom);
 #endif

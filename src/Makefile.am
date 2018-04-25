@@ -69,6 +69,7 @@ libmuffin_la_SOURCES =				\
 	compositor/meta-window-group.h		\
 	compositor/meta-window-shape.c		\
 	compositor/meta-window-shape.h		\
+    compositor/meta-window-texture-clone.c  \
 	compositor/region-utils.c		\
 	compositor/region-utils.h		\
 	meta/compositor.h			\
@@ -76,6 +77,7 @@ libmuffin_la_SOURCES =				\
 	meta/meta-plugin.h			\
 	meta/meta-shadow-factory.h		\
 	meta/meta-window-actor.h		\
+    meta/meta-window-texture-clone.h  \
 	meta/compositor-muffin.h 		\
 	core/above-tab-keycode.c		\
 	core/constraints.c			\
@@ -175,6 +177,7 @@ libmuffininclude_base_headers =		\
 	meta/meta-shaped-texture.h		\
 	meta/meta-shadow-factory.h		\
 	meta/meta-window-actor.h		\
+    meta/meta-window-texture-clone.h  \
 	meta/prefs.h				\
 	meta/screen.h				\
 	meta/theme.h				\

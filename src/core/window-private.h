@@ -819,9 +819,6 @@ void       meta_window_set_tile_type (MetaWindow *window,
                                       MetaWindowTileType  type);
 MetaWindowTileType  meta_window_get_tile_type (MetaWindow *window);
 
-gboolean meta_window_is_client_decorated (MetaWindow *window);
-
-
 gboolean meta_window_updates_are_frozen (MetaWindow *window);
 
 void meta_window_extend_by_frame (MetaWindow              *window,
