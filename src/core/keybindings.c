@@ -1504,7 +1504,8 @@ process_event (MetaKeyBinding       *bindings,
                XEvent               *event,
                KeySym                keysym,
                gboolean              on_window,
-               gboolean              allow_release)
+               gboolean              allow_release,
+               gboolean              mouse_grab_move)
 {
   int i;
   unsigned long mask;
@@ -1530,6 +1531,13 @@ process_event (MetaKeyBinding       *bindings,
 
       /* Custom keybindings are from Cinnamon, and never need a window */
       if (!on_window && handler->flags & META_KEY_BINDING_PER_WINDOW && handler->action < META_KEYBINDING_ACTION_CUSTOM)
+        continue;
+
+      /* We allow workspace navigation in a grab state.  Ordinarily we'd not make it this far, and we need to make sure
+       * to stop processing in this case so we return TRUE (event handled) regardless of whether we found a matching
+       * binding, to prevent further processing by cinnamon */
+      if (mouse_grab_move &&
+          (handler->action < META_KEYBINDING_ACTION_WORKSPACE_1 || handler->action > META_KEYBINDING_ACTION_WORKSPACE_RIGHT))
         continue;
 
       if ((event->type != KeyPress && !allow_release) ||
@@ -1568,7 +1576,10 @@ process_event (MetaKeyBinding       *bindings,
 
   meta_topic (META_DEBUG_KEYBINDINGS,
               "No handler found for this event in this binding table\n");
-  return FALSE;
+
+  /* If we're in the middle of a mouse grab move, we always return TRUE here, to
+   * prevent further processing no matter what */
+  return mouse_grab_move;
 }
 
 static gboolean
@@ -1606,7 +1617,7 @@ process_modifier_key (MetaDisplay *display,
           if (process_event (display->key_bindings,
                              display->n_key_bindings,
                              display, screen, window, event, keysym,
-                             have_window, FALSE))
+                             have_window, FALSE, FALSE))
             {
               /* we had a binding, we're done */
               XAllowEvents (display->xdisplay, AsyncKeyboard, event->xkey.time);
@@ -1708,6 +1719,7 @@ meta_display_process_key_event (MetaDisplay *display,
   gboolean all_keys_grabbed;
   gboolean handled;
   gboolean allow_key_up = FALSE;
+  gboolean mouse_grab_move;
   const char *str;
   MetaScreen *screen;
 
@@ -1764,6 +1776,7 @@ meta_display_process_key_event (MetaDisplay *display,
 
   XAllowEvents (display->xdisplay, AsyncKeyboard, event->xkey.time);
 
+  mouse_grab_move = FALSE;
   keep_grab = TRUE;
   if (all_keys_grabbed)
     {
@@ -1779,6 +1792,8 @@ meta_display_process_key_event (MetaDisplay *display,
           switch (display->grab_op)
             {
             case META_GRAB_OP_MOVING:
+              mouse_grab_move = TRUE;
+              /* Fall through - this is just a flag for if we make it to process_event */
             case META_GRAB_OP_RESIZING_SE:
             case META_GRAB_OP_RESIZING_S:      
             case META_GRAB_OP_RESIZING_SW:      
@@ -1830,14 +1845,56 @@ meta_display_process_key_event (MetaDisplay *display,
           meta_display_end_grab_op (display, event->xkey.time);
         }
 
-      return TRUE;
+      /* If this isn't specifically a mouse-based window move, we don't process keybindings
+       * in the middle of a grab, so we end early and prevent further processing, otherwise
+       * we let process_event() handle this. */
+
+      if (!mouse_grab_move)
+        {
+          return TRUE;
+        }
     }
   
   /* Do the normal keybindings */
   return process_event (display->key_bindings,
                         display->n_key_bindings,
                         display, screen, window, event, keysym,
-                        !all_keys_grabbed && window, allow_key_up);
+                        !all_keys_grabbed && window, allow_key_up,
+                        mouse_grab_move);
+}
+
+static void
+handle_workspace_shift (MetaWindow *window,
+                        XEvent     *event,
+                        KeySym      keysym)
+{
+    MetaWorkspace *target_workspace;
+    guint motion = META_MOTION_LEFT;
+    gboolean should_handle = FALSE;
+
+    if (keysym == XK_Left || keysym == XK_KP_Left)
+    {
+        motion = meta_prefs_get_invert_flip_direction () ? META_MOTION_RIGHT : META_MOTION_LEFT;
+        should_handle = TRUE;
+    }
+    else
+    if (keysym == XK_Right || keysym == XK_KP_Right)
+    {
+        motion = meta_prefs_get_invert_flip_direction () ? META_MOTION_LEFT : META_MOTION_RIGHT;
+        should_handle = TRUE;
+    }
+
+    if (!should_handle)
+    {
+        return;
+    }
+
+    target_workspace = meta_workspace_get_neighbor (window->screen->active_workspace, motion);
+
+    if (target_workspace)
+    {
+        meta_workspace_activate (target_workspace, event->xkey.time);
+    }
 }
 
 static gboolean
@@ -1847,6 +1904,10 @@ process_mouse_move_resize_grab (MetaDisplay *display,
                                 XEvent      *event,
                                 KeySym       keysym)
 {
+  MetaWorkspace *target_workspace;
+  gulong mask;
+  gboolean numlock = FALSE;
+
   /* don't care about releases, but eat them, don't end grab */
   if (event->type == KeyRelease)
     return TRUE;
@@ -1884,6 +1945,110 @@ process_mouse_move_resize_grab (MetaDisplay *display,
       /* End grab */
       return FALSE;
     }
+
+    /* Don't use ignored_modifier_mask here - we don't want to ignore numlock */
+    mask = event->xkey.state & 0xff & ~(display->scroll_lock_mask | LockMask);
+
+    /* Only proceed if no mod or only numlock */
+    if (mask == display->num_lock_mask)
+    {
+        numlock = TRUE;
+    } 
+    else if (mask > display->num_lock_mask)
+    {
+        return TRUE;
+    }
+
+    gint index = -1;
+
+    switch (keysym)
+      {
+        case XK_Left:
+        case XK_Right:
+          handle_workspace_shift (window, event, keysym);
+          return TRUE;
+
+        case XK_KP_End:
+          if (!numlock) break;
+        case XK_1:
+          index = 0;
+          break;
+
+        case XK_KP_Down:
+          if (!numlock) break;
+        case XK_2:
+          index = 1;
+          break;
+
+        case XK_KP_Next:
+          if (!numlock) break;
+        case XK_3:
+          index = 2;
+          break;
+
+        case XK_KP_Left:
+          if (!numlock)
+          {
+            handle_workspace_shift (window, event, keysym);
+            return TRUE;
+          }
+        case XK_4:
+          index = 3;
+          break;
+
+        case XK_KP_Begin:
+          if (!numlock) break;
+        case XK_5:
+          index = 4;
+          break;
+
+        case XK_KP_Right:
+          if (!numlock)
+          {
+            handle_workspace_shift (window, event, keysym);
+            return TRUE;
+          }
+        case XK_6:
+          index = 5;
+          break;
+
+        case XK_KP_Home:
+          if (!numlock) break;
+        case XK_7:
+          index = 6;
+          break;
+
+        case XK_KP_Up:
+          if (!numlock) break;
+        case XK_8:
+          index = 7;
+          break;
+
+        case XK_KP_Prior:
+          if (!numlock) break;
+        case XK_9:
+          index = 8;
+          break;
+
+        case XK_KP_Insert:
+          if (!numlock) break;
+        case XK_0:
+          index = 9;
+          break;
+
+        default:
+          break;
+      }
+
+    if (index >= 0)
+      {
+        target_workspace = meta_screen_get_workspace_by_index (window->screen, index);
+
+        if (target_workspace)
+          {
+            meta_workspace_activate (target_workspace, event->xkey.time);
+          }
+      }
 
   return TRUE;
 }
