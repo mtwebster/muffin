@@ -53,8 +53,6 @@
  */
 #define MIN_FAST_UPDATES_BEFORE_UNMIPMAP 20
 
-#define META_WINDOW_ACTOR_PARAM_ANIMATABLE (1 << G_PARAM_USER_SHIFT)
-
 enum {
   POSITION_CHANGED,
   SIZE_CHANGED,
@@ -325,19 +323,6 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
                                    PROP_X_WINDOW,
                                    pspec);
 
-  pspec = g_param_spec_uint ("opacity",
-                             "Opacity",
-                             "Opacity of a window actor actor",
-                             0, 255,
-                             255,
-                             G_PARAM_READWRITE |
-                             G_PARAM_STATIC_STRINGS |
-                             META_WINDOW_ACTOR_PARAM_ANIMATABLE);
-
-  g_object_class_install_property (object_class,
-                                   PROP_OPACITY,
-                                   pspec);
-
   pspec = g_param_spec_boolean ("no-shadow",
                                 "No shadow",
                                 "Do not add shaddow to this window",
@@ -367,6 +352,8 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
   g_object_class_install_property (object_class,
                                    PROP_OBSCURED,
                                    pspec);
+
+  g_object_class_override_property (object_class, PROP_OPACITY, "opacity");
 
   signals[POSITION_CHANGED] =
     g_signal_new ("position-changed",
@@ -503,7 +490,7 @@ meta_window_actor_constructed (GObject *object)
   priv->shape_region = cairo_region_create();
 
   /* Opacity handling */
-  meta_window_actor_set_opacity (self, -1);
+  meta_window_actor_reset_opacity (self);
 }
 
 static void
@@ -3547,7 +3534,30 @@ meta_window_actor_invalidate_shadow (MetaWindowActor *self)
   clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
 }
 
-#define OPACITY_TYPE_CARDINAL -1
+void
+meta_window_actor_reset_opacity (MetaWindowActor *self)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+
+  MetaDisplay *display = priv->screen->display;
+  MetaCompositor *compositor = display->compositor;
+  Window xwin = priv->window->xwindow;
+  gulong value;
+  guint8 opacity;
+
+  if (meta_prop_get_cardinal (display, xwin,
+                              compositor->atom_net_wm_window_opacity,
+                              &value))
+    {
+      opacity = (guint8)((gfloat)value * 255.0 / ((gfloat)0xffffffff));
+    }
+  else
+    {
+      opacity = 255;
+    }
+
+    meta_window_actor_set_opacity (self, opacity);
+}
 
 void
 meta_window_actor_set_opacity (MetaWindowActor *self,
@@ -3559,23 +3569,6 @@ meta_window_actor_set_opacity (MetaWindowActor *self,
     return;
 
   guint8 old_opacity = priv->opacity;
-
-  if (opacity == OPACITY_TYPE_CARDINAL)
-    {
-      MetaDisplay *display = priv->screen->display;
-      MetaCompositor *compositor = display->compositor;
-      Window xwin = priv->window->xwindow;
-      gulong value;
-
-      if (meta_prop_get_cardinal (display, xwin,
-                                  compositor->atom_net_wm_window_opacity,
-                                  &value))
-        {
-          opacity = (guint8)((gfloat)value * 255.0 / ((gfloat)0xffffffff));
-        }
-      else
-        opacity = 255;
-    }
 
   /* Only adjust opacity if it has changed, or if the window is younger
      than one second after the first paint cycle. */
