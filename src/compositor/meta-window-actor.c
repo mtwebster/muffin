@@ -86,6 +86,8 @@ enum
 #define DEFAULT_SHADOW_X_OFFSET 0
 #define DEFAULT_SHADOW_Y_OFFSET 8
 
+#define OPACITY_TYPE_CARDINAL -1
+
 static void meta_window_actor_dispose    (GObject *object);
 static void meta_window_actor_finalize   (GObject *object);
 static void meta_window_actor_constructed (GObject *object);
@@ -370,7 +372,7 @@ meta_window_actor_constructed (GObject *object)
   priv->shape_region = cairo_region_create();
 
   /* Opacity handling */
-  meta_window_actor_set_opacity (self, -1);
+  meta_window_actor_set_opacity (self, OPACITY_TYPE_CARDINAL);
 }
 
 static void
@@ -493,7 +495,7 @@ meta_window_actor_set_property (GObject      *object,
       priv->xwindow = g_value_get_ulong (value);
       break;
     case PROP_OPACITY:
-      meta_window_actor_set_opacity (self, g_value_get_uint (value));
+      meta_window_actor_set_opacity (self, (gint)g_value_get_uint (value));
       break;
     case PROP_NO_SHADOW:
       {
@@ -1634,7 +1636,7 @@ set_obscured (MetaWindowActor *self,
       if (priv->opacity_queued)
         {
           priv->opacity_queued = FALSE;
-          meta_window_actor_set_opacity (self, -1);
+          meta_window_actor_set_opacity (self, OPACITY_TYPE_CARDINAL);
         }
     }
 }
@@ -3359,13 +3361,12 @@ meta_window_actor_invalidate_shadow (MetaWindowActor *self)
   clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
 }
 
-static inline guint8 OPACITY_TYPE_CARDINAL = -1;
-
 void
 meta_window_actor_set_opacity (MetaWindowActor *self,
-                               guint8           opacity)
+                               gint             opacity)
 {
   MetaWindowActorPrivate *priv = self->priv;
+  guint8 final_opacity;
 
   if (priv->obscured)
     {
@@ -3384,29 +3385,31 @@ meta_window_actor_set_opacity (MetaWindowActor *self,
                                                  compositor->atom_net_wm_window_opacity,
                                                  XA_CARDINAL, &value))
         {
-          opacity = (guint8)((gfloat)value * 255.0 / ((gfloat)0xffffffff));
+          opacity = (gint)((gfloat)value * 255.0 / ((gfloat)0xffffffff));
         }
       else
         opacity = 255;
     }
 
+  final_opacity = (guint8) CLAMP (opacity, 0, 255);
+
   /* Only adjust opacity if it has changed, or if the window is younger
      than one second after the first paint cycle. */
-  if (priv->opacity != opacity || !priv->first_frame_drawn)
+  if (priv->opacity != final_opacity || !priv->first_frame_drawn)
     {
       ClutterActor *actor = CLUTTER_ACTOR (self);
       gboolean transparent;
 
-      priv->opacity = opacity;
+      priv->opacity = final_opacity;
 
-      cogl_color_init_from_4ub (&priv->color, opacity, opacity, opacity, opacity);
+      cogl_color_init_from_4ub (&priv->color, final_opacity, final_opacity, final_opacity, final_opacity);
 
-      clutter_actor_set_opacity (actor, opacity);
+      clutter_actor_set_opacity (actor, final_opacity);
 
       if (!priv->should_have_shadow)
         return;
 
-      transparent = opacity != 255;
+      transparent = final_opacity != 255;
 
       /* If we have an ARGB32 window that we decorate with a frame, it's
        * probably something like a translucent terminal - something where
