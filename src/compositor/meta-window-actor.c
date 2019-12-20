@@ -1552,32 +1552,58 @@ meta_window_actor_should_unredirect (MetaWindowActor *self)
   MetaWindow *metaWindow = meta_window_actor_get_meta_window (self);
   MetaWindowActorPrivate *priv = self->priv;
 
-  if (meta_window_actor_is_destroyed (self))
+  if (meta_window_actor_is_destroyed (self)) {
+    g_printerr ("DESTROY\n");
+    return FALSE;
+}
+
+  if (meta_window_requested_dont_bypass_compositor (metaWindow)) {
+    g_printerr ("requested_dont_bypass\n");
+    return FALSE;
+}
+
+  if (priv->opacity != 0xff) {
+    g_printerr ("WOULD OPACITY\n");
+//     return FALSE;
+}
+
+  if (metaWindow->has_shape) {
+    g_printerr ("has shape\n");
+
+    return FALSE;
+}
+
+  if (priv->argb32 && !meta_window_requested_bypass_compositor (metaWindow)) {
+    g_printerr ("argb\n");
+
+    return FALSE;
+}
+
+  if (!meta_window_is_monitor_sized (metaWindow)) {
+    g_printerr ("monitorsize\n");
+
     return FALSE;
 
-  if (meta_window_requested_dont_bypass_compositor (metaWindow))
-    return FALSE;
+  }
 
-  if (priv->opacity != 0xff)
-    return FALSE;
+  if (meta_window_requested_bypass_compositor (metaWindow)) {
+    g_printerr ("requested_DO BYPASS\n");
 
-  if (metaWindow->has_shape)
-    return FALSE;
-
-  if (priv->argb32 && !meta_window_requested_bypass_compositor (metaWindow))
-    return FALSE;
-
-  if (!meta_window_is_monitor_sized (metaWindow))
-    return FALSE;
-
-  if (meta_window_requested_bypass_compositor (metaWindow))
     return TRUE;
+}
 
-  if (meta_window_is_override_redirect (metaWindow))
-    return TRUE;
+  if (meta_window_is_override_redirect (metaWindow)) {
+    g_printerr ("IS OR\n");
 
-  if (priv->does_full_damage && meta_prefs_get_unredirect_fullscreen_windows ())
     return TRUE;
+}
+
+  if (priv->does_full_damage && meta_prefs_get_unredirect_fullscreen_windows ()) {
+    g_printerr ("DAMAGE AND PREF\n");
+
+    return TRUE;
+}
+    g_printerr ("END\n");
 
   return FALSE;
 }
@@ -2267,6 +2293,8 @@ meta_window_actor_process_damage (MetaWindowActor    *self,
       else
         priv->full_damage_frames_count = 0;
 
+    g_printerr ("%u --- damage event %d, %d, %d, %d,  w: %d, %d, %d, %d\n",
+    event->area.x, event->area.y, event->area.width, event->area.height, window_rect.x, window_rect.x, window_rect.width, window_rect.height, priv->full_damage_frames_count);
       if (priv->full_damage_frames_count >= 100)
         priv->does_full_damage = TRUE;
     }
