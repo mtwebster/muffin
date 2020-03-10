@@ -1870,6 +1870,50 @@ meta_window_actor_tile (MetaWindowActor    *self,
     }
 }
 
+static void
+ensure_tooltip_visible (MetaWindow *window)
+{
+  const MetaMonitorInfo *wmonitor;
+  MetaRectangle work_area, *win_rect;
+  gint new_x, new_y;
+
+  wmonitor = meta_screen_get_monitor_for_window (window->screen, window);
+
+  meta_workspace_get_work_area_for_monitor (meta_screen_get_active_workspace (window->screen),
+                                            wmonitor->number,
+                                            &work_area);
+
+  win_rect = meta_window_get_rect (window);
+
+  new_x = win_rect->x;
+  new_y = win_rect->y;
+
+  if (win_rect->y < work_area.y)
+    {
+      new_y = work_area.y;
+    }
+  else if (win_rect->y + win_rect->height > work_area.y + work_area.height)
+    {
+      new_y = (work_area.y + work_area.height - win_rect->height);
+    }
+
+  if (win_rect->x < work_area.x)
+    {
+      new_x = work_area.x;
+    }
+  else if (win_rect->x + win_rect->width > work_area.x + work_area.width)
+    {
+      new_y = (work_area.x + work_area.width - win_rect->width);
+    }
+      g_printerr ("old: %d, %d, new: %d, %d\n", win_rect->x, win_rect->y, new_x, new_y);
+
+  if (new_x != win_rect->x || new_y != win_rect->y)
+    {
+      meta_window_move(window, FALSE, new_x, new_y);
+    }
+}
+
+
 LOCAL_SYMBOL MetaWindowActor *
 meta_window_actor_new (MetaWindow *window)
 {
@@ -1921,7 +1965,14 @@ meta_window_actor_new (MetaWindow *window)
   if (window->type == META_WINDOW_DND)
     window_group = compositor->window_group;
   else if (window->layer == META_LAYER_OVERRIDE_REDIRECT)
-    window_group = compositor->top_window_group;
+    {
+      if (window->type == META_WINDOW_TOOLTIP)
+        {
+          ensure_tooltip_visible (window);
+        }
+
+      window_group = compositor->top_window_group;
+    }
   else if (window->type == META_WINDOW_DESKTOP)
     window_group = compositor->bottom_window_group;
   else
