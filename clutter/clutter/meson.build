@@ -401,7 +401,7 @@ clutter_marshal = gnome.genmarshal('clutter-marshal',
 clutter_built_sources += clutter_marshal[0]
 clutter_built_headers += clutter_marshal[1]
 
-libmutter_clutter_name = 'mutter-clutter-' + libmutter_api_version
+libmutter_clutter_name = 'muffin-clutter-' + libmutter_api_version
 libmutter_clutter = shared_library(libmutter_clutter_name,
   sources: [
     clutter_sources,
@@ -504,7 +504,7 @@ if have_introspection
       ],
       nsversion: libmutter_api_version,
       namespace: 'ClutterX11',
-      export_packages: ['mutter-clutter-x11-' + libmutter_api_version],
+      export_packages: ['muffin-clutter-x11-' + libmutter_api_version],
       includes: [
         libmutter_cogl_gir[0],
         libmutter_cogl_pango_gir[0],
@@ -533,9 +533,9 @@ install_headers(clutter_x11_headers,
   subdir: join_paths(clutter_clutter_includesubdir, 'x11'))
 
 pkg.generate(libmutter_clutter,
-  name: 'Mutters Clutter',
+  name: 'Muffins Clutter',
   filebase: libmutter_clutter_name,
-  description: 'Mutters Clutter Private Library',
+  description: 'Muffinss Clutter Private Library',
   libraries: [m_dep],
   subdirs: join_paths(pkgname, 'clutter'),
   requires: [clutter_pkg_deps, libmutter_cogl_name],
@@ -547,9 +547,9 @@ pkg.generate(libmutter_clutter,
 )
 
 pkg.generate(libmutter_clutter,
-  name: 'Mutters ClutterX11',
-  filebase: 'mutter-clutter-x11-' + libmutter_api_version,
-  description: 'Mutters ClutterX11 Private Library',
+  name: 'Muffins ClutterX11',
+  filebase: 'muffin-clutter-x11-' + libmutter_api_version,
+  description: 'Muffin ClutterX11 Private Library',
   libraries: [m_dep],
   subdirs: join_paths(pkgname, 'clutter'),
   requires: [clutter_pkg_deps, libmutter_cogl_name],

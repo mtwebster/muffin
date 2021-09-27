@@ -432,7 +432,7 @@ if have_cogl_tests
   cogl_test_deps += [libmutter_cogl_test_fixtures_dep]
 endif
 
-libmutter_cogl_name = 'mutter-cogl-' + libmutter_api_version
+libmutter_cogl_name = 'muffin-cogl-' + libmutter_api_version
 libmutter_cogl = shared_library(libmutter_cogl_name,
   sources: [cogl_sources, cogl_headers_all],
   version: '0.0.0',

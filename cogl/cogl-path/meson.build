@@ -53,7 +53,7 @@ cogl_path_c_args = [
   cogl_c_args,
 ]
 
-libmutter_cogl_path = shared_library('mutter-cogl-path-' + libmutter_api_version,
+libmutter_cogl_path = shared_library('muffin-cogl-path-' + libmutter_api_version,
   sources: [cogl_path_sources, cogl_path_public_headers],
   version: '0.0.0',
   soversion: 0,
@@ -75,7 +75,7 @@ install_headers(cogl_path_public_headers,
 
 pkg.generate(libmutter_cogl_path,
   name: 'CoglPath',
-  filebase: 'mutter-cogl-path-' + libmutter_api_version,
+  filebase: 'muffin-cogl-path-' + libmutter_api_version,
   description: 'A 2D path drawing library for Cogl in mutter',
   subdirs: join_paths(pkgname, 'cogl'),
   requires: [cogl_pkg_deps, libmutter_cogl_name],

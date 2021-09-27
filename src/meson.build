@@ -927,7 +927,7 @@ libmutter_dep = declare_dependency(
   ],
 )
 
-executable('mutter',
+executable('muffin',
   sources: [
     files('core/mutter.c'),
   ],
@@ -938,7 +938,7 @@ executable('mutter',
   install: true,
 )
 
-executable('mutter-restart-helper',
+executable('muffin-restart-helper',
   sources: [
     files('core/restart-helper.c'),
   ],
@@ -996,15 +996,15 @@ endif
 
 pkg.generate(libmutter,
   name: 'Meta',
-  filebase: 'libmutter-' + libmutter_api_version,
-  description: 'Mutter compositor and window manager library',
+  filebase: 'libmuffin-' + libmutter_api_version,
+  description: 'Muffin compositor and window manager library',
   subdirs: pkgname,
   requires: [mutter_pkg_deps, libmutter_clutter_name],
   version: meson.project_version(),
   variables: [
     'apiversion=' + libmutter_api_version,
-    'girdir=${libdir}/mutter-' + libmutter_api_version,
-    'typelibdir=${libdir}/mutter-' + libmutter_api_version,
+    'girdir=${libdir}/muffin-' + libmutter_api_version,
+    'typelibdir=${libdir}/muffin-' + libmutter_api_version,
   ],
   install_dir: pcdir,
 )

@@ -1,5 +1,5 @@
-project('mutter', 'c',
-  version: '3.36.9',
+project('muffin', 'c',
+  version: '5.2.0',
   meson_version: '>= 0.50.0',
   license: 'GPLv2+'
 )
@@ -10,7 +10,7 @@ split_version = meson.project_version().split('.')
 
 # Automatically increase API version each development cycle,
 # starting with 0 in 3.23.x
-api_version = (split_version[1].to_int() - 23) / 2
+api_version = 6
 libmutter_api_version = '@0@'.format(api_version)
 
 # generic version requirements
@@ -80,7 +80,7 @@ pcdir = join_paths(libdir, 'pkgconfig')
 gettext_package = meson.project_name()
 localedir = join_paths(datadir, 'locale')
 
-libmutter_name = 'mutter-' + libmutter_api_version
+libmutter_name = 'muffin-' + libmutter_api_version
 
 mutter_installed_tests_datadir = join_paths(
   datadir, 'installed-tests', libmutter_name)
