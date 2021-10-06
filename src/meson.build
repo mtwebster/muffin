@@ -23,8 +23,7 @@ mutter_pkg_deps = [
 
 mutter_pkg_private_deps = [
   gmodule_no_export_dep,
-  gnome_desktop_dep,
-  gnome_settings_daemon_dep,
+  cinnamon_desktop_dep,
   json_glib_dep,
   libcanberra_dep,
   xkbcommon_dep,
@@ -1003,8 +1002,8 @@ pkg.generate(libmutter,
   version: meson.project_version(),
   variables: [
     'apiversion=' + libmutter_api_version,
-    'girdir=${libdir}/muffin-' + libmutter_api_version,
-    'typelibdir=${libdir}/muffin-' + libmutter_api_version,
+    'girdir=${libdir}/muffin',
+    'typelibdir=${libdir}/muffin',
   ],
   install_dir: pcdir,
 )

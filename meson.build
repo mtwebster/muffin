@@ -10,7 +10,7 @@ split_version = meson.project_version().split('.')
 
 # Automatically increase API version each development cycle,
 # starting with 0 in 3.23.x
-api_version = 6
+api_version = 0
 libmutter_api_version = '@0@'.format(api_version)
 
 # generic version requirements
@@ -69,7 +69,7 @@ libexecdir = join_paths(prefix, get_option('libexecdir'))
 includedir = join_paths(prefix, get_option('includedir'))
 sysconfdir = get_option('sysconfdir')
 
-pkgname = '@0@-@1@'.format(meson.project_name(), libmutter_api_version)
+pkgname = '@0@'.format(meson.project_name())
 
 pkgdatadir = join_paths(datadir, pkgname)
 pkglibdir = join_paths(libdir, pkgname)
@@ -80,7 +80,7 @@ pcdir = join_paths(libdir, 'pkgconfig')
 gettext_package = meson.project_name()
 localedir = join_paths(datadir, 'locale')
 
-libmutter_name = 'muffin-' + libmutter_api_version
+libmutter_name = 'muffin'
 
 mutter_installed_tests_datadir = join_paths(
   datadir, 'installed-tests', libmutter_name)
@@ -106,9 +106,8 @@ gio_unix_dep = dependency('gio-unix-2.0', version: glib_req)
 gobject_dep = dependency('gobject-2.0', version: glib_req)
 gthread_dep = dependency('gobject-2.0', version: glib_req)
 gmodule_no_export_dep = dependency('gmodule-no-export-2.0', version: glib_req)
-gnome_settings_daemon_dep = dependency('gnome-settings-daemon')
 json_glib_dep = dependency('json-glib-1.0', version: json_glib_req)
-gnome_desktop_dep = dependency('gnome-desktop-3.0')
+cinnamon_desktop_dep = dependency('cinnamon-desktop')
 xcomposite_dep = dependency('xcomposite', version: xcomposite_req)
 xcursor_dep = dependency('xcursor')
 xdamage_dep = dependency('xdamage')
