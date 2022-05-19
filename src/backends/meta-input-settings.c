@@ -1465,7 +1465,7 @@ lookup_device_settings (ClutterInputDevice *device)
   if (type == CLUTTER_TOUCHSCREEN_DEVICE)
     {
       group = "touchscreens";
-      schema = "org.gnome.desktop.peripherals.touchscreen";
+      schema = "org.cinnamon.desktop.peripherals.touchscreen";
     }
   else if (type == CLUTTER_TABLET_DEVICE ||
            type == CLUTTER_PEN_DEVICE ||
@@ -1474,14 +1474,14 @@ lookup_device_settings (ClutterInputDevice *device)
            type == CLUTTER_PAD_DEVICE)
     {
       group = "tablets";
-      schema = "org.gnome.desktop.peripherals.tablet";
+      schema = "org.cinnamon.desktop.peripherals.tablet";
     }
   else
     return NULL;
 
   vendor = clutter_input_device_get_vendor_id (device);
   product = clutter_input_device_get_product_id (device);
-  path = g_strdup_printf ("/org/gnome/desktop/peripherals/%s/%s:%s/",
+  path = g_strdup_printf ("/org/cinnamon/desktop/peripherals/%s/%s:%s/",
                           group, vendor, product);
 
   settings = g_settings_new_with_path (schema, path);
@@ -1508,18 +1508,18 @@ lookup_tool_settings (ClutterInputDeviceTool *tool,
    * real serial, so let's custom-case this */
   if (serial == 0 || serial == 1)
     {
-      path = g_strdup_printf ("/org/gnome/desktop/peripherals/stylus/default-%s:%s/",
+      path = g_strdup_printf ("/org/cinnamon/desktop/peripherals/stylus/default-%s:%s/",
                               clutter_input_device_get_vendor_id (device),
                               clutter_input_device_get_product_id (device));
     }
   else
     {
-      path = g_strdup_printf ("/org/gnome/desktop/peripherals/stylus/%" G_GINT64_MODIFIER "x/",
+      path = g_strdup_printf ("/org/cinnamon/desktop/peripherals/stylus/%" G_GINT64_MODIFIER "x/",
                               serial);
     }
 
   tool_settings =
-    g_settings_new_with_path ("org.gnome.desktop.peripherals.tablet.stylus",
+    g_settings_new_with_path ("org.cinnamon.desktop.peripherals.tablet.stylus",
                               path);
   g_object_set_qdata_full (G_OBJECT (tool), quark_tool_settings, tool_settings,
                            (GDestroyNotify) g_object_unref);
@@ -1567,7 +1567,7 @@ lookup_pad_action_settings (ClutterInputDevice *device,
     }
 
   path = g_string_new (NULL);
-  g_string_append_printf (path, "/org/gnome/desktop/peripherals/tablets/%s:%s/%s%c",
+  g_string_append_printf (path, "/org/cinnamon/desktop/peripherals/tablets/%s:%s/%s%c",
                           vendor, product, action_type, action_label);
 
   if (detail_type)
@@ -1578,7 +1578,7 @@ lookup_pad_action_settings (ClutterInputDevice *device,
 
   g_string_append_c (path, '/');
 
-  settings = g_settings_new_with_path ("org.gnome.desktop.peripherals.tablet.pad-button",
+  settings = g_settings_new_with_path ("org.cinnamon.desktop.peripherals.tablet.pad-button",
                                        path->str);
   g_string_free (path, TRUE);
 
