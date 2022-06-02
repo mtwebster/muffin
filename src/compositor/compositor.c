@@ -1634,7 +1634,7 @@ meta_compositor_is_switching_workspace (MetaCompositor *compositor)
  * The root window background automatically tracks the image or color set
  * by the environment.
  *
- * Return value: (transfer none): The background actor corresponding to @display
+ * Returns: (transfer none): The background actor corresponding to @display
  */
 ClutterActor *
 meta_get_x11_background_actor_for_display (MetaDisplay *display)
@@ -1645,6 +1645,14 @@ meta_get_x11_background_actor_for_display (MetaDisplay *display)
   return priv->background_actor;
 }
 
+/**
+ * meta_get_desklet_container_for_display:
+ * @display: a #MetaDisplay
+ *
+ * Returns the desklet container actor.
+ *
+ * Return value: (transfer none): The desklet container actor.
+ */
 ClutterActor *
 meta_get_desklet_container_for_display (MetaDisplay *display)
 {
