@@ -3592,6 +3592,9 @@ meta_monitor_manager_can_apply_rotation (MetaMonitorManager *manager,
 {
   gboolean ret = FALSE;
 
+  if (!meta_monitor_manager_get_is_builtin_display_on (manager))
+    return FALSE;
+
   MetaOrientation orientation = xrandr_to_monitor_transform (rotation);
 
   if (orientation == META_MONITOR_TRANSFORM_INVALID)
