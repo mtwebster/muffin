@@ -215,6 +215,7 @@ enum
   PROP_ON_ALL_WORKSPACES,
   PROP_PROGRESS,
   PROP_PROGRESS_PULSE,
+  PROP_TILE_MODE,
   PROP_LAST,
 };
 
@@ -443,6 +444,9 @@ meta_window_get_property(GObject         *object,
     case PROP_PROGRESS_PULSE:
       g_value_set_boolean (value, win->progress_pulse);
       break;
+    case PROP_TILE_MODE:
+      g_value_set_enum (value, win->tile_mode);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -646,6 +650,14 @@ meta_window_class_init (MetaWindowClass *klass)
                           "Show indeterminate or ongoing progress of an operation.",
                           FALSE,
                           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
+ obj_props[PROP_TILE_MODE] =
+    g_param_spec_enum ("tile-mode",
+                       "Window Tile Mode",
+                       "The tile state of the window",
+                       META_TYPE_TILE_MODE,
+                       META_TILE_NONE,
+                       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, PROP_LAST, obj_props);
 
