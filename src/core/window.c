@@ -97,11 +97,19 @@
 #include "wayland/meta-window-xwayland.h"
 #endif
 
-/* Windows that unmaximize to a size bigger than that fraction of the workarea
+/* Windows that unmaximize to a size bigger than this fraction of the workarea
  * will be scaled down to that size (while maintaining aspect ratio).
- * Windows that cover an area greater then this size are automaximized on map.
  */
 #define MAX_UNMAXIMIZED_WINDOW_AREA .8
+
+/* */
+#define SSD_FRAME_HEIGHT_GUESS 28
+// #define CSD_FRAME_EXTENTS
+
+/* Windows that cover an area greater then this fraction of the workarea
+ * are automaximized on map.
+ */
+#define AUTO_MAXIMIZE_THRESHOLD .95
 
 #define SNAP_SECURITY_LABEL_PREFIX "snap."
 
@@ -2515,8 +2523,24 @@ meta_window_show (MetaWindow *window)
         {
           MetaRectangle work_area;
           meta_window_get_work_area_for_monitor (window, window->monitor->number, &work_area);
-          /* Automaximize windows that map with a size > MAX_UNMAXIMIZED_WINDOW_AREA of the work area */
-          if (window->rect.width * window->rect.height > work_area.width * work_area.height * MAX_UNMAXIMIZED_WINDOW_AREA)
+          gint adjusted_height = window->rect.height;
+          gint adjusted_width = window->rect.width;
+          if (!window->has_custom_frame_extents && window->decorated && !window->border_only)
+            adjusted_height += SSD_FRAME_HEIGHT_GUESS;
+          else
+            {
+              adjusted_height += 25;
+              adjusted_width += 25;
+            }
+
+          // meta_topic (META_DEBUG_PLACEMENT, "window: %dx%d -- workarea: %dx%d -- ratio: %.2f (threshold: %d)",
+          g_printerr ("place: window: %dx%d -- workarea: %dx%d -- ratio: %.2f (threshold: %.2f)\n",
+                      adjusted_width, adjusted_height, work_area.width, work_area.height,
+                      ((float)adjusted_width * adjusted_height) / ((float)work_area.width * work_area.height),
+                      AUTO_MAXIMIZE_THRESHOLD);
+
+          /* Automaximize windows that map with a size > AUTO_MAXIMIZE_THRESOLD of the work area */
+          if (window->rect.width * adjusted_height > work_area.width * work_area.height * AUTO_MAXIMIZE_THRESHOLD)
             {
               window->maximize_horizontally_after_placement = TRUE;
               window->maximize_vertically_after_placement = TRUE;
@@ -6866,6 +6890,18 @@ update_resize (MetaWindow *window,
   if (window->rect.width != old_rect.width ||
       window->rect.height != old_rect.height)
     window->display->grab_last_moveresize_time = g_get_real_time ();
+
+
+
+          MetaRectangle work_area;
+          meta_window_get_work_area_for_monitor (window, window->monitor->number, &work_area);
+
+          // meta_topic (META_DEBUG_PLACEMENT, "window: %dx%d -- workarea: %dx%d -- ratio: %.2f (threshold: %d)",
+          g_printerr ("update_resize: window: %dx%d -- workarea: %dx%d -- ratio: %.2f (threshold: %.2f)\n",
+                      window->rect.width, window->rect.height, work_area.width, work_area.height,
+                      ((float)window->rect.width * window->rect.height) / ((float)work_area.width * work_area.height),
+                      AUTO_MAXIMIZE_THRESHOLD);
+
 }
 
 void
