@@ -600,14 +600,14 @@ meta_compositor_manage (MetaCompositor *compositor)
   priv->top_window_group = meta_window_group_new (display);
   priv->bottom_window_group = meta_window_group_new (display);
   priv->feedback_group = meta_window_group_new (display);
-  priv->background_actor = meta_x11_background_actor_new_for_display (display);
+  // priv->background_actor = meta_x11_background_actor_new_for_display (display);
 
   // This needs to remain stacked just above the background actor in the window group.
   // So sync_actor_stacking() has to be able to reference it. The deskletManager
   // will take this and finish setting it up.
   priv->desklet_container = clutter_actor_new ();
 
-  clutter_actor_add_child (priv->window_group, priv->background_actor);
+  // clutter_actor_add_child (priv->window_group, priv->background_actor);
   clutter_actor_add_child (priv->window_group, priv->bottom_window_group);
   clutter_actor_add_child (priv->window_group, priv->desklet_container);
   clutter_actor_add_child (priv->stage, priv->window_group);
