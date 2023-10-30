@@ -958,7 +958,7 @@ sync_actor_stacking (MetaCompositor *compositor)
         }
     }
 
-  g_list_free (children);
+  g_clear_pointer (&children, g_list_free);
 
   if (!reordered)
     {
@@ -992,6 +992,27 @@ sync_actor_stacking (MetaCompositor *compositor)
 
   // Then the bottom window group (which META_WINDOW_DESKTOP windows like nemo-desktop's get placed in).
   clutter_actor_set_child_below_sibling (priv->window_group, priv->bottom_window_group, NULL);
+  children = clutter_actor_get_children (priv->bottom_window_group);
+  for (tmp = children; tmp != NULL; tmp = tmp->next)
+    {
+      MetaWindowActor *child = tmp->data;
+      MetaWindow *mw = meta_window_actor_get_meta_window (child);
+
+      if (mw != NULL)
+        {
+          // CsdBackground manager sets _NET_WM_STATE_BELOW (gtk_window_set_keep_below)
+          // This sets its stack layer to META_LAYER_BOTTOM, so we can keep these below
+          // the nemo-desktop, etc..
+          MetaStackLayer layer = meta_window_get_default_layer (mw);
+
+          if (layer == META_LAYER_BOTTOM)
+            {
+              clutter_actor_set_child_below_sibling (priv->bottom_window_group, CLUTTER_ACTOR (child), NULL);
+            }
+        }
+    }
+
+    g_list_free (children);
 
   // and finally backgrounds..
 
