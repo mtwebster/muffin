@@ -338,6 +338,7 @@ void meta_display_queue_autoraise_callback  (MetaDisplay *display,
 void meta_display_remove_autoraise_callback (MetaDisplay *display);
 
 void meta_display_overlay_key_activate (MetaDisplay *display);
+gboolean meta_display_super_tap (MetaDisplay *display);
 void meta_display_accelerator_activate (MetaDisplay     *display,
                                         guint            action,
                                         ClutterKeyEvent *event);

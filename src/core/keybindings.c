@@ -2443,6 +2443,16 @@ process_key_event (MetaDisplay     *display,
         }
     }
 
+  /* On a clean Super tap (modifier press+release, no chord), give the shell
+   * first refusal via the super-tap signal. If it consumes, stop; otherwise
+   * fall through to normal keybindings so applet bindings (e.g. the menu on
+   * Super_L) still fire. */
+  if (allow_key_up &&
+      (event->keyval == CLUTTER_KEY_Super_L ||
+       event->keyval == CLUTTER_KEY_Super_R) &&
+      meta_display_super_tap (display))
+    return TRUE;
+
   /* Do the normal keybindings */
   return process_event (display, window, event, allow_key_up, mouse_grab_move);
 }

@@ -135,6 +135,7 @@ enum
   X11_DISPLAY_OPENED,
   X11_DISPLAY_CLOSING,
   OVERLAY_KEY,
+  SUPER_TAP,
   ACCELERATOR_ACTIVATED,
   MODIFIERS_ACCELERATOR_ACTIVATED,
   FOCUS_WINDOW,
@@ -278,6 +279,14 @@ meta_display_class_init (MetaDisplayClass *klass)
                   0,
                   NULL, NULL, NULL,
                   G_TYPE_NONE, 0);
+
+  display_signals[SUPER_TAP] =
+    g_signal_new ("super-tap",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0,
+                  g_signal_accumulator_true_handled, NULL, NULL,
+                  G_TYPE_BOOLEAN, 0);
 
   display_signals[ACCELERATOR_ACTIVATED] =
     g_signal_new ("accelerator-activated",
@@ -2791,6 +2800,14 @@ void
 meta_display_overlay_key_activate (MetaDisplay *display)
 {
   g_signal_emit (display, display_signals[OVERLAY_KEY], 0);
+}
+
+gboolean
+meta_display_super_tap (MetaDisplay *display)
+{
+  gboolean handled = FALSE;
+  g_signal_emit (display, display_signals[SUPER_TAP], 0, &handled);
+  return handled;
 }
 
 void
