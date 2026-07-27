@@ -16,7 +16,7 @@ Build-Depends:
         gtk-doc-tools (>= 1.15),
         libcairo2-dev (>= 1.10.0),
         libcanberra-gtk3-dev,
-        libdrm-dev (>= 2.4.83) [linux-any],
+        libdrm-dev (>= 2.4.105) [linux-any],
         libegl1-mesa-dev (>= 17) [linux-any],
         libfribidi-dev (>= 1.0.0),
         libgirepository1.0-dev (>= 0.9.12),
