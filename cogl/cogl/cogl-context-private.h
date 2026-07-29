@@ -306,6 +306,9 @@ _cogl_context_get_default (void);
 const CoglWinsysVtable *
 _cogl_context_get_winsys (CoglContext *context);
 
+void
+_cogl_context_update_sync (CoglContext *context);
+
 /* Query the GL extensions and lookup the corresponding function
  * pointers. Theoretically the list of extensions can change for
  * different GL contexts so it is the winsys backend's responsiblity
