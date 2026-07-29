@@ -289,6 +289,13 @@ meta_renderer_native_gpu_data_free (MetaRendererNativeGpuData *renderer_gpu_data
   MetaRendererNative *renderer_native = renderer_gpu_data->renderer_native;
   MetaEgl *egl = meta_renderer_native_get_egl (renderer_native);
 
+  /* Drop the blit-capability cache keyed on this context before the display
+   * goes away, so a later context reusing the address cannot inherit it. */
+  if (renderer_native->gles3 &&
+      renderer_gpu_data->secondary.egl_context != EGL_NO_CONTEXT)
+    meta_renderer_native_gles3_forget_context (renderer_native->gles3,
+                                               renderer_gpu_data->secondary.egl_context);
+
   if (renderer_gpu_data->egl_display != EGL_NO_DISPLAY)
     meta_egl_terminate (egl, renderer_gpu_data->egl_display, NULL);
 
