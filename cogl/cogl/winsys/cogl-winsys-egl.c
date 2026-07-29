@@ -430,6 +430,12 @@ _cogl_winsys_display_destroy (CoglDisplay *display)
 
   g_return_if_fail (egl_display != NULL);
 
+  if (egl_renderer->sync != EGL_NO_SYNC_KHR && egl_renderer->pf_eglDestroySync)
+    {
+      egl_renderer->pf_eglDestroySync (egl_renderer->edpy, egl_renderer->sync);
+      egl_renderer->sync = EGL_NO_SYNC_KHR;
+    }
+
   cleanup_context (display);
 
   if (egl_renderer->platform_vtable->display_destroy)
@@ -778,6 +784,12 @@ _cogl_winsys_onscreen_swap_buffers_with_damage (CoglOnscreen *onscreen,
                                  COGL_FRAMEBUFFER (onscreen),
                                  COGL_FRAMEBUFFER_STATE_BIND);
 
+  /* Refresh the exported fence while all of this frame's rendering is
+   * submitted but before we present, so anyone reading the resulting buffer
+   * on another GPU can wait for it. Creating a native fence sync implies a
+   * flush, so this covers everything drawn above. */
+  _cogl_context_update_sync (context);
+
   if (n_rectangles && egl_renderer->pf_eglSwapBuffersWithDamage)
     {
       CoglFramebuffer *fb = COGL_FRAMEBUFFER (onscreen);
@@ -840,6 +852,45 @@ _cogl_winsys_fence_destroy (CoglContext *context, void *fence)
 
   renderer->pf_eglDestroySync (renderer->edpy, fence);
 }
+
+/* Export the fence covering everything submitted so far, so another GPU can
+ * be told to wait for it before reading what we rendered. Returns -1 when
+ * the driver has no native fence support, which callers treat as "no
+ * synchronisation available" rather than an error. */
+static int
+_cogl_winsys_get_sync_fd (CoglContext *context)
+{
+  CoglRendererEGL *renderer = context->display->renderer->winsys;
+  int fd;
+
+  if (!renderer->pf_eglDupNativeFenceFD)
+    return -1;
+
+  if (renderer->sync == EGL_NO_SYNC_KHR)
+    return -1;
+
+  fd = renderer->pf_eglDupNativeFenceFD (renderer->edpy, renderer->sync);
+  if (fd == EGL_NO_NATIVE_FENCE_FD_ANDROID)
+    return -1;
+
+  return fd;
+}
+
+static void
+_cogl_winsys_update_sync (CoglContext *context)
+{
+  CoglRendererEGL *renderer = context->display->renderer->winsys;
+
+  if (!renderer->pf_eglDestroySync || !renderer->pf_eglCreateSync)
+    return;
+
+  if (renderer->sync != EGL_NO_SYNC_KHR)
+    renderer->pf_eglDestroySync (renderer->edpy, renderer->sync);
+
+  renderer->sync = renderer->pf_eglCreateSync (renderer->edpy,
+                                               EGL_SYNC_NATIVE_FENCE_ANDROID,
+                                               NULL);
+}
 #endif
 
 static CoglWinsysVtable _cogl_winsys_vtable =
@@ -868,6 +919,8 @@ static CoglWinsysVtable _cogl_winsys_vtable =
     .fence_add = _cogl_winsys_fence_add,
     .fence_is_complete = _cogl_winsys_fence_is_complete,
     .fence_destroy = _cogl_winsys_fence_destroy,
+    .get_sync_fd = _cogl_winsys_get_sync_fd,
+    .update_sync = _cogl_winsys_update_sync,
 #endif
   };
 
