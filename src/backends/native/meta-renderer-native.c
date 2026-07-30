@@ -343,12 +343,6 @@ meta_renderer_native_get_egl (MetaRendererNative *renderer_native)
   return meta_backend_get_egl (meta_renderer_get_backend (renderer));
 }
 
-gboolean
-meta_renderer_native_use_modifiers (MetaRendererNative *renderer_native)
-{
-  return renderer_native->use_modifiers;
-}
-
 static MetaEgl *
 meta_onscreen_native_get_egl (MetaOnscreenNative *onscreen_native)
 {
@@ -487,6 +481,7 @@ init_secondary_gpu_state_gpu_copy_mode (MetaRendererNative         *renderer_nat
   width = cogl_framebuffer_get_width (framebuffer);
   height = cogl_framebuffer_get_height (framebuffer);
 
+  errno = 0;
   gbm_surface = gbm_surface_create (renderer_gpu_data->gbm.device,
                                     width, height,
                                     GBM_FORMAT_XRGB8888,
@@ -494,9 +489,13 @@ init_secondary_gpu_state_gpu_copy_mode (MetaRendererNative         *renderer_nat
   if (!gbm_surface)
     {
       /* NVIDIA returns ENOSYS for any nonzero flag set (see the probe in
-       * meta_renderer_native_create_renderer_gpu_data). This surface is only
-       * ever rendered into and read back by the blit path, never scanned out
-       * directly, so retrying without the hints costs us nothing. */
+       * meta_renderer_native_create_renderer_gpu_data), so retry bare. This
+       * buffer is scanned out on the secondary GPU -
+       * copy_shared_framebuffer_gpu() locks its front buffer and flips it - so
+       * dropping the hints is a last resort that relies on the driver's
+       * flagless default being scanout capable, not on scanout being
+       * irrelevant here. */
+      errno = 0;
       gbm_surface = gbm_surface_create (renderer_gpu_data->gbm.device,
                                         width, height,
                                         GBM_FORMAT_XRGB8888,
@@ -506,7 +505,8 @@ init_secondary_gpu_state_gpu_copy_mode (MetaRendererNative         *renderer_nat
   if (!gbm_surface)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Failed to create gbm_surface: %s", strerror (errno));
+                   "Failed to create gbm_surface: %s",
+                   errno ? g_strerror (errno) : "unknown error");
       return FALSE;
     }
 
@@ -2463,19 +2463,34 @@ meta_renderer_native_create_surface_gbm (CoglOnscreen        *onscreen,
     meta_renderer_native_get_gpu_data (renderer_native,
                                        onscreen_native->render_gpu);
 
-  if (renderer_gpu_data->use_modifiers)
-    modifiers = get_supported_modifiers (onscreen, format);
-  else
-    modifiers = NULL;
-
-  if (renderer_gpu_data->use_modifiers && !modifiers)
+  if (!renderer_gpu_data->use_modifiers)
     {
-      /* The implicit fallback below is exactly what use_modifiers was turned
-       * on to avoid, so say so rather than failing later with a bare
-       * allocation error. */
-      g_warning_once ("No scanout modifiers advertised for format 0x%x; "
-                      "falling back to implicit allocation despite modifiers "
-                      "being enabled", format);
+      modifiers = NULL;
+    }
+  else if (should_surface_be_sharable (onscreen))
+    {
+      /* A secondary GPU has to import this, and LINEAR is the only layout we
+       * can rely on it accepting - the plane's IN_FORMATS describes scanout
+       * here, which says nothing about import there. Same reason the implicit
+       * path below adds GBM_BO_USE_LINEAR. */
+      uint64_t linear_modifier = DRM_FORMAT_MOD_LINEAR;
+
+      modifiers = g_array_sized_new (FALSE, FALSE, sizeof (uint64_t), 1);
+      g_array_append_val (modifiers, linear_modifier);
+    }
+  else
+    {
+      modifiers = get_supported_modifiers (onscreen, format);
+
+      if (!modifiers)
+        {
+          /* The implicit fallback below is exactly what use_modifiers was
+           * turned on to avoid, so say so rather than failing later with a
+           * bare allocation error. */
+          g_warning_once ("No scanout modifiers advertised for format 0x%x; "
+                          "falling back to implicit allocation despite "
+                          "modifiers being enabled", format);
+        }
     }
 
   if (modifiers)
@@ -2495,6 +2510,9 @@ meta_renderer_native_create_surface_gbm (CoglOnscreen        *onscreen,
       if (should_surface_be_sharable (onscreen))
         flags |= GBM_BO_USE_LINEAR;
 
+      /* GBM does not promise to set errno - NVIDIA does (ENOSYS), Mesa often
+       * does not - so clear it rather than reporting a stale value. */
+      errno = 0;
       new_gbm_surface = gbm_surface_create (renderer_gpu_data->gbm.device,
                                             width, height,
                                             format,
@@ -2505,7 +2523,8 @@ meta_renderer_native_create_surface_gbm (CoglOnscreen        *onscreen,
     {
       g_set_error (error, COGL_WINSYS_ERROR,
                    COGL_WINSYS_ERROR_CREATE_ONSCREEN,
-                   "Failed to allocate surface: %s", g_strerror (errno));
+                   "Failed to allocate surface: %s",
+                   errno ? g_strerror (errno) : "unknown error");
       return FALSE;
     }
 
@@ -3574,6 +3593,28 @@ gpu_kms_is_hardware_rendering (MetaRendererNative *renderer_native,
   return data->secondary.is_hardware_rendering;
 }
 
+static gboolean
+gpu_kms_can_scanout (MetaRendererNative *renderer_native,
+                     MetaGpuKms         *gpu_kms)
+{
+  MetaRendererNativeGpuData *data;
+
+  data = meta_renderer_native_get_gpu_data (renderer_native, gpu_kms);
+  return !data->no_scanout;
+}
+
+/* A GPU we can render on but not scan out from is no use as primary, so it
+ * has to lose selection outright rather than be preferred and then abort at
+ * the first flip. Kept separate from is_hardware_rendering, which describes
+ * whether the secondary blit path works and stays true for such a GPU. */
+static gboolean
+gpu_kms_can_be_primary (MetaRendererNative *renderer_native,
+                        MetaGpuKms         *gpu_kms)
+{
+  return gpu_kms_is_hardware_rendering (renderer_native, gpu_kms) &&
+         gpu_kms_can_scanout (renderer_native, gpu_kms);
+}
+
 static EGLDisplay
 init_gbm_egl_display (MetaRendererNative  *renderer_native,
                       struct gbm_device   *gbm_device,
@@ -3632,7 +3673,8 @@ create_renderer_gpu_data_gbm (MetaRendererNative  *renderer_native,
   renderer_gpu_data->renderer_native = renderer_native;
   renderer_gpu_data->gbm.device = gbm_device;
   renderer_gpu_data->mode = META_RENDERER_NATIVE_MODE_GBM;
-  renderer_gpu_data->use_modifiers = renderer_native->use_modifiers;
+  renderer_gpu_data->use_modifiers = renderer_native->use_modifiers ||
+                                     meta_gpu_kms_requires_modifiers (gpu_kms);
 
   renderer_gpu_data->egl_display = init_gbm_egl_display (renderer_native,
                                                          gbm_device,
@@ -3841,7 +3883,8 @@ create_renderer_gpu_data_egl_device (MetaRendererNative  *renderer_native,
   renderer_gpu_data->egl.device = egl_device;
   renderer_gpu_data->mode = META_RENDERER_NATIVE_MODE_EGL_DEVICE;
   renderer_gpu_data->egl_display = egl_display;
-  renderer_gpu_data->use_modifiers = renderer_native->use_modifiers;
+  renderer_gpu_data->use_modifiers = renderer_native->use_modifiers ||
+                                     meta_gpu_kms_requires_modifiers (gpu_kms);
 
   return renderer_gpu_data;
 }
@@ -3965,11 +4008,12 @@ meta_renderer_native_create_renderer_gpu_data (MetaRendererNative  *renderer_nat
 #endif
 
   /* Nothing usable for rendering on this GPU, but don't fail the renderer
-   * over it. is_hardware_rendering stays FALSE, so choose_primary_gpu_unchecked()
-   * prefers any GPU that can render, and this one can still serve as a
-   * secondary receiving CPU-copied buffers. Returning NULL would propagate
-   * out of meta_renderer_native_initable_init() and abort the whole backend
-   * over one unusable GPU. It is only fatal when this is all we have, which
+   * over it. gpu_kms_can_be_primary() rejects it, so
+   * choose_primary_gpu_unchecked() prefers any GPU that can render, and this
+   * one can still serve as a secondary receiving CPU-copied buffers.
+   * Returning NULL would propagate out of
+   * meta_renderer_native_initable_init() and abort the whole backend over one
+   * unusable GPU. It is only fatal when this is all we have, which
    * choose_primary_gpu() is the right place to decide.
    *
    * Note this is not a software-rendering fallback: without an EGL display
@@ -3984,11 +4028,6 @@ meta_renderer_native_create_renderer_gpu_data (MetaRendererNative  *renderer_nat
                  meta_gpu_kms_get_file_path (gpu_kms),
                  gbm_renderer_gpu_data->egl_display == EGL_NO_DISPLAY ?
                  "no EGL display" : "no scanout surface path");
-      /* A GPU that cannot allocate scanout buffers is no more use to us than
-       * one with no EGL display, so let it lose primary selection the same
-       * way rather than being preferred and then aborting at first flip. */
-      if (gbm_renderer_gpu_data->no_scanout)
-        gbm_renderer_gpu_data->secondary.is_hardware_rendering = FALSE;
 
       return gbm_renderer_gpu_data;
     }
@@ -4109,7 +4148,7 @@ choose_primary_gpu_unchecked (MetaBackend        *backend,
 
         if (meta_gpu_kms_is_preferred_primary (gpu_kms) &&
             (allow_sw == 1 ||
-             gpu_kms_is_hardware_rendering (renderer_native, gpu_kms)))
+             gpu_kms_can_be_primary (renderer_native, gpu_kms)))
           return gpu_kms;
       }
 
@@ -4120,7 +4159,7 @@ choose_primary_gpu_unchecked (MetaBackend        *backend,
 
         if (meta_gpu_kms_is_platform_device (gpu_kms) &&
             (allow_sw == 1 ||
-             gpu_kms_is_hardware_rendering (renderer_native, gpu_kms)))
+             gpu_kms_can_be_primary (renderer_native, gpu_kms)))
           return gpu_kms;
       }
 
@@ -4131,7 +4170,7 @@ choose_primary_gpu_unchecked (MetaBackend        *backend,
 
         if (meta_gpu_kms_is_boot_vga (gpu_kms) &&
             (allow_sw == 1 ||
-             gpu_kms_is_hardware_rendering (renderer_native, gpu_kms)))
+             gpu_kms_can_be_primary (renderer_native, gpu_kms)))
           return gpu_kms;
       }
 
@@ -4141,7 +4180,7 @@ choose_primary_gpu_unchecked (MetaBackend        *backend,
         MetaGpuKms *gpu_kms = META_GPU_KMS (l->data);
 
         if (allow_sw == 1 ||
-            gpu_kms_is_hardware_rendering (renderer_native, gpu_kms))
+            gpu_kms_can_be_primary (renderer_native, gpu_kms))
           return gpu_kms;
       }
   }
@@ -4206,21 +4245,6 @@ meta_renderer_native_initable_init (GInitable     *initable,
                                                          error);
   if (!renderer_native->primary_gpu_kms)
     return FALSE;
-
-  /* This runs after the loop above has already seeded every gpu data, so it
-   * has to be applied to the device it is about rather than to the renderer
-   * default, which nothing would re-read. */
-  if (meta_gpu_kms_requires_modifiers (renderer_native->primary_gpu_kms))
-    {
-      MetaRendererNativeGpuData *primary_gpu_data;
-
-      renderer_native->use_modifiers = TRUE;
-
-      primary_gpu_data =
-        meta_renderer_native_get_gpu_data (renderer_native,
-                                           renderer_native->primary_gpu_kms);
-      primary_gpu_data->use_modifiers = TRUE;
-    }
 
   return TRUE;
 }
