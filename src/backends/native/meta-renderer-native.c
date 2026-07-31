@@ -3507,6 +3507,28 @@ init_secondary_gpu_data_cpu (MetaRendererNativeGpuData *renderer_gpu_data)
     META_SHARED_FRAMEBUFFER_COPY_MODE_ZERO;
 }
 
+/* The blit path renders into a gbm surface on the secondary GPU and scans that
+ * out there, so it needs the same allocation a primary would. Where that is
+ * broken, drop back to the CPU path, which uses dumb buffers and never touches
+ * gbm. */
+static void
+demote_secondary_gpu_data_to_cpu (MetaRendererNativeGpuData *renderer_gpu_data)
+{
+  MetaRendererNative *renderer_native = renderer_gpu_data->renderer_native;
+  MetaEgl *egl = meta_renderer_native_get_egl (renderer_native);
+
+  if (renderer_gpu_data->secondary.egl_context != EGL_NO_CONTEXT)
+    {
+      meta_egl_destroy_context (egl,
+                                renderer_gpu_data->egl_display,
+                                renderer_gpu_data->secondary.egl_context,
+                                NULL);
+      renderer_gpu_data->secondary.egl_context = EGL_NO_CONTEXT;
+    }
+
+  init_secondary_gpu_data_cpu (renderer_gpu_data);
+}
+
 static void
 init_secondary_gpu_data (MetaRendererNativeGpuData *renderer_gpu_data)
 {
@@ -3544,8 +3566,8 @@ gpu_kms_can_scanout (MetaRendererNative *renderer_native,
 
 /* A GPU we can render on but not scan out from is no use as primary, so it
  * has to lose selection outright rather than be preferred and then abort at
- * the first flip. Kept separate from is_hardware_rendering, which describes
- * whether the secondary blit path works and stays true for such a GPU. */
+ * the first flip. Both conditions are checked because allow_sw selection can
+ * still reach a GPU that renders fine. */
 static gboolean
 gpu_kms_can_be_primary (MetaRendererNative *renderer_native,
                         MetaGpuKms         *gpu_kms)
@@ -3941,6 +3963,11 @@ meta_renderer_native_create_renderer_gpu_data (MetaRendererNative  *renderer_nat
                  "surface path; trying EGLDevice/EGLStream",
                  meta_gpu_kms_get_file_path (gpu_kms));
       gbm_renderer_gpu_data->no_scanout = TRUE;
+
+      /* choose_primary_gpu() rejects this GPU, but nothing stopped it being
+       * used as a secondary, where the blit would allocate the surface we just
+       * failed to and scan it out here anyway. */
+      demote_secondary_gpu_data_to_cpu (gbm_renderer_gpu_data);
     }
 
 #ifdef HAVE_EGL_DEVICE
