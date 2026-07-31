@@ -736,10 +736,18 @@ init_secondary_gpu_state (MetaRendererNative  *renderer_native,
       break;
     case META_SHARED_FRAMEBUFFER_COPY_MODE_ZERO:
       /*
-       * Initialize also the primary copy mode, so that if zero-copy
-       * path fails, which is quite likely, we can simply continue
-       * with the primary copy path on the very first frame.
+       * Zero-copy fails often enough that the fallback has to be ready before
+       * the first frame, so initialize whichever path we would demote to.
        */
+      if (renderer_gpu_data->secondary.is_hardware_rendering)
+        {
+          if (!init_secondary_gpu_state_gpu_copy_mode (renderer_native,
+                                                       onscreen,
+                                                       renderer_gpu_data,
+                                                       error))
+            return FALSE;
+          break;
+        }
       G_GNUC_FALLTHROUGH;
     case META_SHARED_FRAMEBUFFER_COPY_MODE_PRIMARY:
       if (!init_secondary_gpu_state_cpu_copy_mode (renderer_native,
@@ -1558,24 +1566,34 @@ import_shared_framebuffer (CoglOnscreen                        *onscreen,
                                               &error);
   if (!buffer_import)
     {
-      g_debug ("Zero-copy disabled for %s, meta_drm_buffer_import_new failed: %s",
-               meta_gpu_kms_get_file_path (secondary_gpu_state->gpu_kms),
-               error->message);
+      /* A once-per-output decision, like the renderer's other backend
+       * choices, so report it at the same level rather than needing
+       * G_MESSAGES_DEBUG to find out which path an output ended up on. */
+      g_message ("RENDERER: %s -> %s (zero-copy import failed: %s)",
+                 meta_gpu_kms_get_file_path (secondary_gpu_state->gpu_kms),
+                 secondary_gpu_state->renderer_gpu_data->secondary.is_hardware_rendering ?
+                 "secondary GPU blit" : "primary GPU copy",
+                 error->message);
 
       g_warn_if_fail (secondary_gpu_state->import_status ==
                       META_SHARED_FRAMEBUFFER_IMPORT_STATUS_NONE);
 
       /*
        * Fall back. If META_SHARED_FRAMEBUFFER_IMPORT_STATUS_NONE is
-       * in effect, we have COPY_MODE_PRIMARY prepared already, so we
-       * simply retry with that path. Import status cannot be FAILED,
+       * in effect, init_secondary_gpu_state() prepared the path we demote to
+       * already, so we simply retry with it. Import status cannot be FAILED,
        * because we should not retry if failed once.
        *
        * If import status is OK, that is unexpected and we do not
        * have the fallback path prepared which means this output cannot
        * work anymore.
+       *
+       * Demote to the blit wherever this GPU can render, matching what
+       * init_secondary_gpu_state() initialized.
        */
       secondary_gpu_state->renderer_gpu_data->secondary.copy_mode =
+        secondary_gpu_state->renderer_gpu_data->secondary.is_hardware_rendering ?
+        META_SHARED_FRAMEBUFFER_COPY_MODE_SECONDARY_GPU :
         META_SHARED_FRAMEBUFFER_COPY_MODE_PRIMARY;
 
       secondary_gpu_state->import_status =
@@ -1599,8 +1617,8 @@ import_shared_framebuffer (CoglOnscreen                        *onscreen,
        */
       secondary_gpu_release_dumb (secondary_gpu_state);
 
-      g_debug ("Using zero-copy for %s succeeded once.",
-               meta_gpu_kms_get_file_path (secondary_gpu_state->gpu_kms));
+      g_message ("RENDERER: %s -> zero-copy scanout (no per-frame copy)",
+                 meta_gpu_kms_get_file_path (secondary_gpu_state->gpu_kms));
     }
 
   secondary_gpu_state->import_status =
@@ -2048,6 +2066,10 @@ update_secondary_gpu_state_pre_swap_buffers (CoglOnscreen *onscreen)
           /* Done after eglSwapBuffers. */
           if (secondary_gpu_state->import_status ==
               META_SHARED_FRAMEBUFFER_IMPORT_STATUS_OK)
+            break;
+          /* The blit we would demote to is itself done after eglSwapBuffers,
+           * so there is nothing to prepare here for it. */
+          if (renderer_gpu_data->secondary.is_hardware_rendering)
             break;
           /* prepare fallback */
           G_GNUC_FALLTHROUGH;
@@ -3595,7 +3617,14 @@ init_secondary_gpu_data_gpu (MetaRendererNativeGpuData *renderer_gpu_data,
   renderer_gpu_data->secondary.is_hardware_rendering = TRUE;
   renderer_gpu_data->secondary.egl_context = egl_context;
   renderer_gpu_data->secondary.egl_config = egl_config;
-  renderer_gpu_data->secondary.copy_mode = META_SHARED_FRAMEBUFFER_COPY_MODE_SECONDARY_GPU;
+
+  /* Try importing the primary GPU's buffer for scanout before settling for
+   * blitting it. The blit costs a full-screen copy on this GPU every frame,
+   * plus - where the driver needs them - an external-texture sample and a
+   * fence wait; an import that succeeds costs nothing per frame.
+   * import_shared_framebuffer() demotes us to SECONDARY_GPU on the first
+   * frame if the import fails, so the blit stays the fallback. */
+  renderer_gpu_data->secondary.copy_mode = META_SHARED_FRAMEBUFFER_COPY_MODE_ZERO;
 
   renderer_gpu_data->secondary.has_EGL_EXT_image_dma_buf_import_modifiers =
     meta_egl_has_extensions (egl, egl_display, NULL,

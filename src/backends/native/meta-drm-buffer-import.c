@@ -50,26 +50,53 @@ struct _MetaDrmBufferImport
 G_DEFINE_TYPE (MetaDrmBufferImport, meta_drm_buffer_import,
                META_TYPE_DRM_BUFFER)
 
+/* GBM_BO_IMPORT_FD carries no modifier, so the importer has to guess the
+ * layout - which only works where that guess happens to be what the exporter
+ * allocated. Import with the real modifier where we know it, so a tiled or
+ * explicitly-LINEAR buffer describes itself. */
 static struct gbm_bo *
 dmabuf_to_gbm_bo (struct gbm_device *importer,
                   int                dmabuf_fd,
                   uint32_t           width,
                   uint32_t           height,
                   uint32_t           stride,
-                  uint32_t           format)
+                  uint32_t           offset,
+                  uint32_t           format,
+                  uint64_t           modifier)
 {
-  struct gbm_import_fd_data data = {
-    .fd = dmabuf_fd,
-    .width = width,
-    .height = height,
-    .stride = stride,
-    .format = format
-  };
+  if (modifier != DRM_FORMAT_MOD_INVALID)
+    {
+      struct gbm_import_fd_modifier_data data = {
+        .width = width,
+        .height = height,
+        .format = format,
+        .num_fds = 1,
+        .fds[0] = dmabuf_fd,
+        .strides[0] = stride,
+        .offsets[0] = offset,
+        .modifier = modifier
+      };
 
-  return gbm_bo_import (importer,
-                        GBM_BO_IMPORT_FD,
-                        &data,
-                        GBM_BO_USE_SCANOUT);
+      return gbm_bo_import (importer,
+                            GBM_BO_IMPORT_FD_MODIFIER,
+                            &data,
+                            GBM_BO_USE_SCANOUT);
+    }
+  else
+    {
+      struct gbm_import_fd_data data = {
+        .fd = dmabuf_fd,
+        .width = width,
+        .height = height,
+        .stride = stride,
+        .format = format
+      };
+
+      return gbm_bo_import (importer,
+                            GBM_BO_IMPORT_FD,
+                            &data,
+                            GBM_BO_USE_SCANOUT);
+    }
 }
 
 static gboolean
@@ -77,6 +104,7 @@ import_gbm_buffer (MetaDrmBufferImport  *buffer_import,
                    GError              **error)
 {
   MetaGpuKmsFBArgs fb_args = { 0, };
+  g_autoptr (GError) local_error = NULL;
   struct gbm_bo *primary_bo;
   struct gbm_device *importer;
   struct gbm_bo *imported_bo;
@@ -99,7 +127,19 @@ import_gbm_buffer (MetaDrmBufferImport  *buffer_import,
       return FALSE;
     }
 
+  if (gbm_bo_get_plane_count (primary_bo) != 1)
+    {
+      g_set_error (error,
+                   G_IO_ERROR,
+                   G_IO_ERROR_NOT_SUPPORTED,
+                   "cannot import a multi-planar buffer");
+      ret = FALSE;
+      goto out_close;
+    }
+
   fb_args.strides[0] = gbm_bo_get_stride (primary_bo);
+  fb_args.offsets[0] = gbm_bo_get_offset (primary_bo, 0);
+  fb_args.modifiers[0] = gbm_bo_get_modifier (primary_bo);
   fb_args.width = gbm_bo_get_width (primary_bo);
   fb_args.height = gbm_bo_get_height (primary_bo);
   fb_args.format = gbm_bo_get_format (primary_bo);
@@ -109,7 +149,9 @@ import_gbm_buffer (MetaDrmBufferImport  *buffer_import,
                                   fb_args.width,
                                   fb_args.height,
                                   fb_args.strides[0],
-                                  fb_args.format);
+                                  fb_args.offsets[0],
+                                  fb_args.format,
+                                  fb_args.modifiers[0]);
   if (!imported_bo)
     {
       g_set_error (error,
@@ -122,11 +164,31 @@ import_gbm_buffer (MetaDrmBufferImport  *buffer_import,
 
   fb_args.handles[0] = gbm_bo_get_handle (imported_bo).u32;
 
+  /* meta_gpu_kms_add_fb() ignores use_modifiers when the modifier is
+   * INVALID, so this is the implicit path unchanged in that case. */
   ret = meta_gpu_kms_add_fb (buffer_import->gpu_kms,
-                             FALSE /* use_modifiers */,
+                             TRUE /* use_modifiers */,
                              &fb_args,
                              &buffer_import->fb_id,
-                             error);
+                             &local_error);
+
+  /* LINEAR and "no modifier given" describe the same layout, so where the
+   * importer cannot take an explicit one - no DRM_CAP_ADDFB2_MODIFIERS -
+   * registering it implicitly states the same thing rather than guessing at
+   * it. Any other modifier is a layout the implicit path would misread, so
+   * let that fail into the caller's fallback instead. */
+  if (!ret && fb_args.modifiers[0] == DRM_FORMAT_MOD_LINEAR)
+    {
+      g_clear_error (&local_error);
+      ret = meta_gpu_kms_add_fb (buffer_import->gpu_kms,
+                                 FALSE /* use_modifiers */,
+                                 &fb_args,
+                                 &buffer_import->fb_id,
+                                 &local_error);
+    }
+
+  if (!ret)
+    g_propagate_error (error, g_steal_pointer (&local_error));
 
   gbm_bo_destroy (imported_bo);
 
