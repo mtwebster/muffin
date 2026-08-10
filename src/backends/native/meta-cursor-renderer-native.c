@@ -406,7 +406,13 @@ calculate_cursor_crtc_sprite_scale (MetaCursorSprite   *cursor_sprite,
     }
   else
     {
-      return 1.0;
+      /* The stage (and thus the cursor plane) is in physical pixels; the
+       * sprite's texture scale already encodes how much to enlarge the
+       * texture to physical size (monitor_scale / buffer_scale). Honor it,
+       * matching the GL renderer's width * texture_scale. Theme cursors keep
+       * texture_scale == 1.0 (they load a pre-scaled texture), so they are
+       * unaffected. */
+      return meta_cursor_sprite_get_texture_scale (cursor_sprite);
     }
 }
 
