@@ -1367,6 +1367,10 @@ clutter_stage_queue_actor_relayout (ClutterStage *stage,
 }
 
 void
+/* A healthy relayout pass allocates a handful of subtrees. Far beyond that and
+ * the pass is not converging - see the bail-out below. */
+#define MAX_RELAYOUT_ITERATIONS 100
+
 _clutter_stage_maybe_relayout (ClutterActor *actor)
 {
   ClutterStage *stage = CLUTTER_STAGE (actor);
@@ -1413,6 +1417,48 @@ _clutter_stage_maybe_relayout (ClutterActor *actor)
       CLUTTER_UNSET_PRIVATE_FLAGS (queued_actor, CLUTTER_IN_RELAYOUT);
 
       count++;
+
+      /* Allocating an actor may queue further relayouts, which the iterator
+       * re-init below folds into this same pass. If an actor re-queues itself,
+       * or two actors re-queue each other, the table never drains and this loop
+       * spins forever with the main loop never returning - the compositor is
+       * then frozen while the process burns a core. Bail out instead, leaving
+       * whatever is still pending for the next frame (which is what upstream
+       * mutter does by construction: it snapshots the list up front).
+       *
+       * The first few times, name what is still pending - the debug name plus
+       * allocation is usually enough to identify the actor. */
+      if (count > MAX_RELAYOUT_ITERATIONS)
+        {
+          static int reported = 0;
+
+          if (reported++ < 3)
+            {
+              GHashTableIter warn_iter;
+              gpointer warn_key;
+              int shown = 0;
+
+              g_warning ("Relayout loop: %d allocations in one pass, %u still "
+                         "pending. Deferring the rest to the next frame.",
+                         count, g_hash_table_size (priv->pending_relayouts));
+
+              g_hash_table_iter_init (&warn_iter, priv->pending_relayouts);
+              while (g_hash_table_iter_next (&warn_iter, &warn_key, NULL) &&
+                     shown++ < 10)
+                {
+                  ClutterActor *pending = warn_key;
+                  ClutterActorBox box;
+
+                  clutter_actor_get_allocation_box (pending, &box);
+                  g_warning ("  still pending: %s  alloc %.0f,%.0f %.0fx%.0f",
+                             _clutter_actor_get_debug_name (pending),
+                             box.x1, box.y1,
+                             box.x2 - box.x1, box.y2 - box.y1);
+                }
+            }
+
+          break;
+        }
 
       /* Prevent using an iterator that's been invalidated */
       if (old_version != priv->pending_relayouts_version)
