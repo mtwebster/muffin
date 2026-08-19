@@ -768,6 +768,14 @@ meta_compositor_do_manage (MetaCompositor  *compositor,
   priv->background_window_group = meta_window_group_new (display);
   priv->feedback_group = meta_window_group_new (display);
 
+  /* Named so they can be told apart in diagnostics - they are all
+   * MetaWindowGroup, so a bare type name identifies nothing. */
+  clutter_actor_set_name (priv->window_group, "window_group");
+  clutter_actor_set_name (priv->top_window_group, "top_window_group");
+  clutter_actor_set_name (priv->bottom_window_group, "bottom_window_group");
+  clutter_actor_set_name (priv->background_window_group, "background_window_group");
+  clutter_actor_set_name (priv->feedback_group, "feedback_group");
+
   /* The wallpaper tier (X11 background actors and Wayland BACKGROUND layer
    * surfaces) lives at the bottom of window_group as one group, below
    * bottom_window_group where BOTTOM-layer desktop windows sit. Added first so

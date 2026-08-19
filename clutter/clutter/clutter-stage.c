@@ -1434,26 +1434,34 @@ _clutter_stage_maybe_relayout (ClutterActor *actor)
 
           if (reported++ < 3)
             {
-              GHashTableIter warn_iter;
-              gpointer warn_key;
+              g_autoptr (GList) pending_list = NULL;
+              GList *pl;
               int shown = 0;
 
               g_warning ("Relayout loop: %d allocations in one pass, %u still "
                          "pending. Deferring the rest to the next frame.",
                          count, g_hash_table_size (priv->pending_relayouts));
 
-              g_hash_table_iter_init (&warn_iter, priv->pending_relayouts);
-              while (g_hash_table_iter_next (&warn_iter, &warn_key, NULL) &&
-                     shown++ < 10)
+              /* Snapshot the keys before reporting: g_warning () can re-enter
+               * and mutate the table, which invalidates a live iterator. */
+              pending_list = g_hash_table_get_keys (priv->pending_relayouts);
+
+              for (pl = pending_list; pl && shown < 10; pl = pl->next, shown++)
                 {
-                  ClutterActor *pending = warn_key;
+                  ClutterActor *pending = pl->data;
+                  ClutterActor *parent = clutter_actor_get_parent (pending);
                   ClutterActorBox box;
 
                   clutter_actor_get_allocation_box (pending, &box);
-                  g_warning ("  still pending: %s  alloc %.0f,%.0f %.0fx%.0f",
+                  g_warning ("  still pending: %s [%p] parent=%s  "
+                             "alloc %.0f,%.0f %.0fx%.0f  visible=%d",
                              _clutter_actor_get_debug_name (pending),
+                             pending,
+                             parent ? _clutter_actor_get_debug_name (parent)
+                                    : "(none)",
                              box.x1, box.y1,
-                             box.x2 - box.x1, box.y2 - box.y1);
+                             box.x2 - box.x1, box.y2 - box.y1,
+                             clutter_actor_is_visible (pending));
                 }
             }
 
