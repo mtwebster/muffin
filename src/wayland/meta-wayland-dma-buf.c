@@ -52,10 +52,12 @@
 #include "meta/meta-backend.h"
 #include "wayland/meta-wayland-buffer.h"
 #include "wayland/meta-wayland-private.h"
+#include "wayland/meta-wayland-surface.h"
 #include "wayland/meta-wayland-versions.h"
 
 #ifdef HAVE_NATIVE_BACKEND
 #include <xf86drm.h>
+#include "backends/native/meta-crtc-kms.h"
 #include "backends/native/meta-drm-buffer-gbm.h"
 #include "backends/native/meta-gpu-kms.h"
 #include "backends/native/meta-renderer-native.h"
@@ -120,6 +122,15 @@ typedef struct _MetaWaylandDmaBufFeedback
   GList *tranches;
 } MetaWaylandDmaBufFeedback;
 
+typedef struct _MetaWaylandDmaBufSurfaceFeedback
+{
+  MetaWaylandDmaBufManager *dma_buf_manager;
+  MetaWaylandSurface *surface;
+  MetaWaylandDmaBufFeedback *feedback;
+  GList *resources;
+  gulong scanout_candidate_changed_id;
+} MetaWaylandDmaBufSurfaceFeedback;
+
 struct _MetaWaylandDmaBufManager
 {
   GObject parent;
@@ -134,6 +145,8 @@ struct _MetaWaylandDmaBufManager
 
 G_DEFINE_TYPE (MetaWaylandDmaBufManager, meta_wayland_dma_buf_manager,
                G_TYPE_OBJECT)
+
+static GQuark quark_dma_buf_surface_feedback;
 
 static gboolean
 meta_wayland_dma_buf_realize_texture (MetaWaylandBuffer  *buffer,
@@ -181,6 +194,12 @@ meta_wayland_dma_buf_realize_texture (MetaWaylandBuffer  *buffer,
       break;
     case DRM_FORMAT_ARGB2101010:
       cogl_format = COGL_PIXEL_FORMAT_ARGB_2101010_PRE;
+      break;
+    case DRM_FORMAT_XBGR2101010:
+      cogl_format = COGL_PIXEL_FORMAT_ABGR_2101010;
+      break;
+    case DRM_FORMAT_ABGR2101010:
+      cogl_format = COGL_PIXEL_FORMAT_ABGR_2101010_PRE;
       break;
     case DRM_FORMAT_RGB565:
       cogl_format = COGL_PIXEL_FORMAT_RGB_565;
@@ -256,15 +275,47 @@ meta_wayland_dma_buf_buffer_attach (MetaWaylandBuffer  *buffer,
 }
 
 #ifdef HAVE_NATIVE_BACKEND
+/*
+ * Alpha formats can be scanned out on the primary plane as their opaque
+ * twins (identical memory layout, and there is nothing to blend against
+ * below the bottom-most plane). Since our onscreen framebuffers are always
+ * opaque and legacy page flips refuse to change the framebuffer format,
+ * client buffers with alpha are handed to KMS under the substitute fourcc.
+ */
+static uint32_t
+drm_format_to_opaque_substitute (uint32_t drm_format)
+{
+  switch (drm_format)
+    {
+    case DRM_FORMAT_ARGB8888:
+      return DRM_FORMAT_XRGB8888;
+    case DRM_FORMAT_ABGR8888:
+      return DRM_FORMAT_XBGR8888;
+    case DRM_FORMAT_ARGB2101010:
+      return DRM_FORMAT_XRGB2101010;
+    case DRM_FORMAT_ABGR2101010:
+      return DRM_FORMAT_XBGR2101010;
+    case DRM_FORMAT_ARGB16161616F:
+      return DRM_FORMAT_XRGB16161616F;
+    case DRM_FORMAT_ABGR16161616F:
+      return DRM_FORMAT_XBGR16161616F;
+    default:
+      return DRM_FORMAT_INVALID;
+    }
+}
+
 static struct gbm_bo *
 import_scanout_gbm_bo (MetaWaylandDmaBufBuffer *dma_buf,
                        MetaGpuKms              *gpu_kms,
                        int                      n_planes,
+                       uint32_t                 drm_format,
                        gboolean                *use_modifier)
 {
   struct gbm_device *gbm_device;
 
   gbm_device = meta_gbm_device_from_gpu (gpu_kms);
+  if (!gbm_device)
+    return NULL;
 
   if (dma_buf->drm_modifier != DRM_FORMAT_MOD_INVALID ||
       n_planes > 1 ||
@@ -275,7 +326,7 @@ import_scanout_gbm_bo (MetaWaylandDmaBufBuffer *dma_buf,
       import_with_modifier = (struct gbm_import_fd_modifier_data) {
         .width = dma_buf->width,
         .height = dma_buf->height,
-        .format = dma_buf->drm_format,
+        .format = drm_format,
         .num_fds = n_planes,
         .modifier = dma_buf->drm_modifier,
       };
@@ -301,7 +352,7 @@ import_scanout_gbm_bo (MetaWaylandDmaBufBuffer *dma_buf,
       import_legacy = (struct gbm_import_fd_data) {
         .width = dma_buf->width,
         .height = dma_buf->height,
-        .format = dma_buf->drm_format,
+        .format = drm_format,
         .stride = dma_buf->strides[0],
         .fd = dma_buf->fds[0],
       };
@@ -338,7 +389,10 @@ meta_wayland_dma_buf_try_acquire_scanout (MetaWaylandDmaBufBuffer *dma_buf,
         break;
     }
 
-  drm_format = dma_buf->drm_format;
+  drm_format = drm_format_to_opaque_substitute (dma_buf->drm_format);
+  if (drm_format == DRM_FORMAT_INVALID)
+    drm_format = dma_buf->drm_format;
+
   drm_modifier = dma_buf->drm_modifier;
   stride = dma_buf->strides[0];
   if (!meta_onscreen_native_is_buffer_scanout_compatible (onscreen,
@@ -348,7 +402,8 @@ meta_wayland_dma_buf_try_acquire_scanout (MetaWaylandDmaBufBuffer *dma_buf,
     return NULL;
 
   gpu_kms = meta_renderer_native_get_primary_gpu (renderer_native);
-  gbm_bo = import_scanout_gbm_bo (dma_buf, gpu_kms, n_planes, &use_modifier);
+  gbm_bo = import_scanout_gbm_bo (dma_buf, gpu_kms, n_planes, drm_format,
+                                  &use_modifier);
   if (!gbm_bo)
     {
       g_debug ("Failed to import scanout gbm_bo: %s", g_strerror (errno));
@@ -683,6 +738,15 @@ meta_wayland_dma_buf_tranche_free (MetaWaylandDmaBufTranche *tranche)
   g_free (tranche);
 }
 
+static MetaWaylandDmaBufTranche *
+meta_wayland_dma_buf_tranche_copy (MetaWaylandDmaBufTranche *tranche)
+{
+  return meta_wayland_dma_buf_tranche_new (tranche->target_device_id,
+                                           tranche->formats,
+                                           tranche->priority,
+                                           tranche->flags);
+}
+
 static void
 meta_wayland_dma_buf_tranche_send (MetaWaylandDmaBufTranche *tranche,
                                    struct wl_resource       *resource)
@@ -727,6 +791,9 @@ meta_wayland_dma_buf_feedback_send_format_table (MetaWaylandDmaBufFeedback *feed
 
   fd = meta_anonymous_file_open_fd (dma_buf_manager->format_table_file,
                                     META_ANONYMOUS_FILE_MAPMODE_PRIVATE);
+  if (fd < 0)
+    return;
+
   size = meta_anonymous_file_size (dma_buf_manager->format_table_file);
   zwp_linux_dmabuf_feedback_v1_send_format_table (resource, fd, size);
   meta_anonymous_file_close_fd (fd);
@@ -780,6 +847,20 @@ meta_wayland_dma_buf_feedback_free (MetaWaylandDmaBufFeedback *feedback)
   g_free (feedback);
 }
 
+static MetaWaylandDmaBufFeedback *
+meta_wayland_dma_buf_feedback_copy (MetaWaylandDmaBufFeedback *feedback)
+{
+  MetaWaylandDmaBufFeedback *new_feedback;
+
+  new_feedback = meta_wayland_dma_buf_feedback_new (feedback->main_device_id);
+  new_feedback->tranches =
+    g_list_copy_deep (feedback->tranches,
+                      (GCopyFunc) meta_wayland_dma_buf_tranche_copy,
+                      NULL);
+
+  return new_feedback;
+}
+
 static void
 feedback_destroy (struct wl_client   *client,
                   struct wl_resource *resource)
@@ -828,6 +909,311 @@ dma_buf_handle_get_default_feedback (struct wl_client   *client,
   send_default_feedback (dma_buf_manager, client, dma_buf_resource, feedback_id);
 }
 
+#ifdef HAVE_NATIVE_BACKEND
+static int
+find_scanout_tranche_func (gconstpointer a,
+                           gconstpointer b)
+{
+  const MetaWaylandDmaBufTranche *tranche = a;
+
+  if (tranche->scanout_crtc_id)
+    return 0;
+  else
+    return -1;
+}
+
+static gboolean
+has_modifier (GArray   *modifiers,
+              uint64_t  drm_modifier)
+{
+  int i;
+
+  for (i = 0; i < modifiers->len; i++)
+    {
+      if (drm_modifier == g_array_index (modifiers, uint64_t, i))
+        return TRUE;
+    }
+  return FALSE;
+}
+
+static gboolean
+crtc_supports_modifier (MetaCrtc *crtc,
+                        uint32_t  drm_format,
+                        uint64_t  drm_modifier)
+{
+  GArray *crtc_modifiers;
+
+  crtc_modifiers = meta_crtc_kms_get_modifiers (crtc, drm_format);
+  if (!crtc_modifiers)
+    return FALSE;
+
+  return has_modifier (crtc_modifiers, drm_modifier);
+}
+
+/*
+ * Formats advertised with the implicit modifier are scanout-capable as long
+ * as the CRTC's primary plane accepts the format; explicit modifiers must
+ * appear in the plane's IN_FORMATS property. Alpha formats also qualify when
+ * their opaque substitute does, since that is what actually gets handed to
+ * KMS.
+ */
+static gboolean
+scanout_tranche_accepts_format (MetaCrtc                *crtc,
+                                MetaWaylandDmaBufFormat *format)
+{
+  uint32_t opaque_format = drm_format_to_opaque_substitute (format->drm_format);
+
+  if (format->drm_modifier == DRM_FORMAT_MOD_INVALID)
+    {
+      if (meta_crtc_kms_supports_format (crtc, format->drm_format))
+        return TRUE;
+
+      return opaque_format != DRM_FORMAT_INVALID &&
+             meta_crtc_kms_supports_format (crtc, opaque_format);
+    }
+
+  if (crtc_supports_modifier (crtc, format->drm_format, format->drm_modifier))
+    return TRUE;
+
+  return opaque_format != DRM_FORMAT_INVALID &&
+         crtc_supports_modifier (crtc, opaque_format, format->drm_modifier);
+}
+
+static void
+ensure_scanout_tranche (MetaWaylandDmaBufSurfaceFeedback *surface_feedback,
+                        MetaCrtc                         *crtc)
+{
+  MetaWaylandDmaBufManager *dma_buf_manager = surface_feedback->dma_buf_manager;
+  MetaWaylandDmaBufFeedback *feedback = surface_feedback->feedback;
+  MetaWaylandDmaBufTranche *tranche;
+  GList *el;
+  int i;
+  g_autoptr (GArray) formats = NULL;
+  MetaWaylandDmaBufTranchePriority priority;
+  MetaWaylandDmaBufTrancheFlags flags;
+
+  g_return_if_fail (META_IS_GPU_KMS (crtc->gpu));
+
+  el = g_list_find_custom (feedback->tranches, NULL, find_scanout_tranche_func);
+  if (el)
+    {
+      tranche = el->data;
+
+      if (tranche->scanout_crtc_id == (uint64_t) crtc->crtc_id)
+        return;
+
+      meta_wayland_dma_buf_tranche_free (tranche);
+      feedback->tranches = g_list_delete_link (feedback->tranches, el);
+    }
+
+  formats = g_array_new (FALSE, FALSE, sizeof (MetaWaylandDmaBufFormat));
+  for (i = 0; i < dma_buf_manager->formats->len; i++)
+    {
+      MetaWaylandDmaBufFormat format =
+        g_array_index (dma_buf_manager->formats,
+                       MetaWaylandDmaBufFormat,
+                       i);
+
+      if (!scanout_tranche_accepts_format (crtc, &format))
+        continue;
+
+      g_array_append_val (formats, format);
+    }
+
+  if (formats->len == 0)
+    return;
+
+  priority = META_WAYLAND_DMA_BUF_TRANCHE_PRIORITY_HIGH;
+  flags = META_WAYLAND_DMA_BUF_TRANCHE_FLAG_SCANOUT;
+  tranche = meta_wayland_dma_buf_tranche_new (feedback->main_device_id,
+                                              formats,
+                                              priority,
+                                              flags);
+  tranche->scanout_crtc_id = crtc->crtc_id;
+  meta_wayland_dma_buf_feedback_add_tranche (feedback, tranche);
+}
+
+static void
+clear_scanout_tranche (MetaWaylandDmaBufSurfaceFeedback *surface_feedback)
+{
+  MetaWaylandDmaBufFeedback *feedback = surface_feedback->feedback;
+  MetaWaylandDmaBufTranche *tranche;
+  GList *el;
+
+  el = g_list_find_custom (feedback->tranches, NULL, find_scanout_tranche_func);
+  if (!el)
+    return;
+
+  tranche = el->data;
+  meta_wayland_dma_buf_tranche_free (tranche);
+  feedback->tranches = g_list_delete_link (feedback->tranches, el);
+}
+
+static void
+log_scanout_capabilities (MetaWaylandDmaBufManager *dma_buf_manager)
+{
+  MetaBackend *backend = meta_get_backend ();
+  GList *gpus, *l;
+  unsigned int n_explicit_total = 0;
+  unsigned int n_implicit_total = 0;
+  unsigned int i;
+
+  if (!META_IS_BACKEND_NATIVE (backend))
+    return;
+
+  for (i = 0; i < dma_buf_manager->formats->len; i++)
+    {
+      MetaWaylandDmaBufFormat *format =
+        &g_array_index (dma_buf_manager->formats, MetaWaylandDmaBufFormat, i);
+
+      if (format->drm_modifier == DRM_FORMAT_MOD_INVALID)
+        n_implicit_total++;
+      else
+        n_explicit_total++;
+    }
+
+  gpus = meta_backend_get_gpus (backend);
+  for (l = gpus; l; l = l->next)
+    {
+      MetaGpu *gpu = l->data;
+      GList *crtcs, *k;
+
+      if (!META_IS_GPU_KMS (gpu))
+        continue;
+
+      crtcs = meta_gpu_get_crtcs (gpu);
+      for (k = crtcs; k; k = k->next)
+        {
+          MetaCrtc *crtc = k->data;
+          unsigned int n_explicit = 0;
+          unsigned int n_implicit = 0;
+
+          for (i = 0; i < dma_buf_manager->formats->len; i++)
+            {
+              MetaWaylandDmaBufFormat *format =
+                &g_array_index (dma_buf_manager->formats,
+                                MetaWaylandDmaBufFormat,
+                                i);
+
+              if (!scanout_tranche_accepts_format (crtc, format))
+                continue;
+
+              if (format->drm_modifier == DRM_FORMAT_MOD_INVALID)
+                n_implicit++;
+              else
+                n_explicit++;
+            }
+
+          g_message ("DMABUF: CRTC %ld (%s%s): scanout tranche would offer "
+                     "%u/%u modifier pairs, %u/%u implicit formats",
+                     crtc->crtc_id,
+                     meta_gpu_kms_get_file_path (META_GPU_KMS (gpu)),
+                     crtc->config ? "" : ", inactive",
+                     n_explicit, n_explicit_total,
+                     n_implicit, n_implicit_total);
+        }
+    }
+}
+#endif /* HAVE_NATIVE_BACKEND */
+
+static void
+update_surface_feedback_tranches (MetaWaylandDmaBufSurfaceFeedback *surface_feedback)
+{
+#ifdef HAVE_NATIVE_BACKEND
+  MetaCrtc *crtc;
+
+  crtc = meta_wayland_surface_get_scanout_candidate (surface_feedback->surface);
+  if (crtc)
+    ensure_scanout_tranche (surface_feedback, crtc);
+  else
+    clear_scanout_tranche (surface_feedback);
+#endif /* HAVE_NATIVE_BACKEND */
+}
+
+static void
+on_scanout_candidate_changed (MetaWaylandSurface               *surface,
+                              GParamSpec                       *pspec,
+                              MetaWaylandDmaBufSurfaceFeedback *surface_feedback)
+{
+  GList *l;
+
+  update_surface_feedback_tranches (surface_feedback);
+
+  for (l = surface_feedback->resources; l; l = l->next)
+    {
+      struct wl_resource *resource = l->data;
+
+      meta_wayland_dma_buf_feedback_send (surface_feedback->feedback,
+                                          surface_feedback->dma_buf_manager,
+                                          resource);
+    }
+}
+
+static void
+surface_feedback_surface_destroyed_cb (gpointer user_data)
+{
+  MetaWaylandDmaBufSurfaceFeedback *surface_feedback = user_data;
+
+  g_list_foreach (surface_feedback->resources,
+                  (GFunc) wl_resource_set_user_data,
+                  NULL);
+  g_list_free (surface_feedback->resources);
+
+  meta_wayland_dma_buf_feedback_free (surface_feedback->feedback);
+
+  g_free (surface_feedback);
+}
+
+static MetaWaylandDmaBufSurfaceFeedback *
+ensure_surface_feedback (MetaWaylandDmaBufManager *dma_buf_manager,
+                         MetaWaylandSurface       *surface)
+{
+  MetaWaylandDmaBufSurfaceFeedback *surface_feedback;
+
+  surface_feedback = g_object_get_qdata (G_OBJECT (surface),
+                                         quark_dma_buf_surface_feedback);
+  if (surface_feedback)
+    return surface_feedback;
+
+  surface_feedback = g_new0 (MetaWaylandDmaBufSurfaceFeedback, 1);
+  surface_feedback->dma_buf_manager = dma_buf_manager;
+  surface_feedback->surface = surface;
+  surface_feedback->feedback =
+    meta_wayland_dma_buf_feedback_copy (dma_buf_manager->default_feedback);
+
+  surface_feedback->scanout_candidate_changed_id =
+    g_signal_connect (surface, "notify::scanout-candidate",
+                      G_CALLBACK (on_scanout_candidate_changed),
+                      surface_feedback);
+
+  g_object_set_qdata_full (G_OBJECT (surface),
+                           quark_dma_buf_surface_feedback,
+                           surface_feedback,
+                           surface_feedback_surface_destroyed_cb);
+
+  return surface_feedback;
+}
+
+static void
+surface_feedback_destructor (struct wl_resource *resource)
+{
+  MetaWaylandDmaBufSurfaceFeedback *surface_feedback;
+
+  surface_feedback = wl_resource_get_user_data (resource);
+  if (!surface_feedback)
+    return;
+
+  surface_feedback->resources = g_list_remove (surface_feedback->resources,
+                                               resource);
+  if (!surface_feedback->resources)
+    {
+      g_clear_signal_handler (&surface_feedback->scanout_candidate_changed_id,
+                              surface_feedback->surface);
+      g_object_set_qdata (G_OBJECT (surface_feedback->surface),
+                          quark_dma_buf_surface_feedback, NULL);
+    }
+}
+
 static void
 dma_buf_handle_get_surface_feedback (struct wl_client   *client,
                                      struct wl_resource *dma_buf_resource,
@@ -836,9 +1222,31 @@ dma_buf_handle_get_surface_feedback (struct wl_client   *client,
 {
   MetaWaylandDmaBufManager *dma_buf_manager =
     wl_resource_get_user_data (dma_buf_resource);
+  MetaWaylandSurface *surface =
+    wl_resource_get_user_data (surface_resource);
+  MetaWaylandDmaBufSurfaceFeedback *surface_feedback;
+  struct wl_resource *feedback_resource;
 
-  /* Phase 1: per-surface feedback is identical to the default feedback. */
-  send_default_feedback (dma_buf_manager, client, dma_buf_resource, feedback_id);
+  surface_feedback = ensure_surface_feedback (dma_buf_manager, surface);
+
+  feedback_resource =
+    wl_resource_create (client,
+                        &zwp_linux_dmabuf_feedback_v1_interface,
+                        wl_resource_get_version (dma_buf_resource),
+                        feedback_id);
+  wl_resource_set_implementation (feedback_resource,
+                                  &feedback_implementation,
+                                  surface_feedback,
+                                  surface_feedback_destructor);
+  surface_feedback->resources = g_list_prepend (surface_feedback->resources,
+                                                feedback_resource);
+
+  meta_wayland_dma_buf_feedback_send_format_table (surface_feedback->feedback,
+                                                   dma_buf_manager,
+                                                   feedback_resource);
+  meta_wayland_dma_buf_feedback_send (surface_feedback->feedback,
+                                      dma_buf_manager,
+                                      feedback_resource);
 }
 
 static const struct zwp_linux_dmabuf_v1_interface dma_buf_implementation =
@@ -964,7 +1372,9 @@ dma_buf_bind (struct wl_client *client,
   send_modifiers (resource, DRM_FORMAT_XRGB8888);
   send_modifiers (resource, DRM_FORMAT_XBGR8888);
   send_modifiers (resource, DRM_FORMAT_ARGB2101010);
+  send_modifiers (resource, DRM_FORMAT_ABGR2101010);
   send_modifiers (resource, DRM_FORMAT_XRGB2101010);
+  send_modifiers (resource, DRM_FORMAT_XBGR2101010);
   send_modifiers (resource, DRM_FORMAT_RGB565);
   send_modifiers (resource, DRM_FORMAT_ABGR16161616F);
   send_modifiers (resource, DRM_FORMAT_XBGR16161616F);
@@ -1079,7 +1489,9 @@ static const uint32_t supported_formats[] = {
   DRM_FORMAT_XRGB8888,
   DRM_FORMAT_XBGR8888,
   DRM_FORMAT_ARGB2101010,
+  DRM_FORMAT_ABGR2101010,
   DRM_FORMAT_XRGB2101010,
+  DRM_FORMAT_XBGR2101010,
   DRM_FORMAT_RGB565,
   DRM_FORMAT_ABGR16161616F,
   DRM_FORMAT_XBGR16161616F,
@@ -1092,18 +1504,48 @@ init_formats (MetaWaylandDmaBufManager  *dma_buf_manager,
               EGLDisplay                 egl_display,
               GError                   **error)
 {
+  MetaBackend *backend = meta_get_backend ();
+  MetaEgl *egl = meta_backend_get_egl (backend);
+  EGLint num_formats;
+  g_autofree EGLint *driver_formats = NULL;
   size_t i;
+  int j;
 
   dma_buf_manager->formats = g_array_new (FALSE, FALSE,
                                           sizeof (MetaWaylandDmaBufFormat));
 
+  /* Only advertise formats the driver can actually import, not just the ones
+   * the compositor knows how to sample from. */
+  if (!meta_egl_query_dma_buf_formats (egl, egl_display, 0, NULL, &num_formats,
+                                       error))
+    return FALSE;
+
+  if (num_formats == 0)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "EGL doesn't support any DRM formats");
+      return FALSE;
+    }
+
+  driver_formats = g_new0 (EGLint, num_formats);
+  if (!meta_egl_query_dma_buf_formats (egl, egl_display, num_formats,
+                                       driver_formats, &num_formats, error))
+    return FALSE;
+
   for (i = 0; i < G_N_ELEMENTS (supported_formats); i++)
-    add_format (dma_buf_manager, egl_display, supported_formats[i]);
+    {
+      for (j = 0; j < num_formats; j++)
+        {
+          if ((EGLint) supported_formats[i] == driver_formats[j])
+            add_format (dma_buf_manager, egl_display, supported_formats[i]);
+        }
+    }
 
   if (dma_buf_manager->formats->len == 0)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "No supported DRM formats detected");
+                   "EGL doesn't support any DRM formats supported by the "
+                   "compositor");
       return FALSE;
     }
 
@@ -1274,6 +1716,10 @@ meta_wayland_dma_buf_manager_new (MetaWaylandCompositor  *compositor,
              protocol_version,
              dma_buf_manager->main_device_id != 0 ? "set" : "unset");
 
+#ifdef HAVE_NATIVE_BACKEND
+  log_scanout_capabilities (dma_buf_manager);
+#endif
+
   return g_steal_pointer (&dma_buf_manager);
 }
 
@@ -1298,6 +1744,9 @@ meta_wayland_dma_buf_manager_class_init (MetaWaylandDmaBufManagerClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->finalize = meta_wayland_dma_buf_manager_finalize;
+
+  quark_dma_buf_surface_feedback =
+    g_quark_from_static_string ("-meta-wayland-dma-buf-surface-feedback");
 }
 
 static void

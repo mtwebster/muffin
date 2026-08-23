@@ -64,4 +64,6 @@ gboolean meta_onscreen_native_is_buffer_scanout_compatible (CoglOnscreen *onscre
                                                             uint64_t      drm_modifier,
                                                             uint32_t      stride);
 
+MetaCrtc * meta_onscreen_native_get_crtc (CoglOnscreen *onscreen);
+
 #endif /* META_RENDERER_NATIVE_H */

@@ -168,6 +168,8 @@ struct _MetaWaylandSurface
 
   MetaWaylandBufferRef *buffer_ref;
 
+  MetaCrtc *scanout_candidate;
+
   /* Buffer renderer state. */
   gboolean buffer_held;
 
@@ -347,6 +349,11 @@ int                 meta_wayland_surface_get_height (MetaWaylandSurface *surface
 
 CoglScanout *       meta_wayland_surface_try_acquire_scanout (MetaWaylandSurface *surface,
                                                               CoglOnscreen       *onscreen);
+
+MetaCrtc *          meta_wayland_surface_get_scanout_candidate (MetaWaylandSurface *surface);
+
+void                meta_wayland_surface_set_scanout_candidate (MetaWaylandSurface *surface,
+                                                                MetaCrtc           *crtc);
 
 static inline GNode *
 meta_get_next_subsurface_sibling (GNode *n)

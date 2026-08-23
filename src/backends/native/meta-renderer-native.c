@@ -2236,6 +2236,15 @@ meta_renderer_native_create_dma_buf (CoglRenderer  *cogl_renderer,
   return NULL;
 }
 
+MetaCrtc *
+meta_onscreen_native_get_crtc (CoglOnscreen *onscreen)
+{
+  CoglOnscreenEGL *onscreen_egl = onscreen->winsys;
+  MetaOnscreenNative *onscreen_native = onscreen_egl->platform;
+
+  return onscreen_native->crtc;
+}
+
 gboolean
 meta_onscreen_native_is_buffer_scanout_compatible (CoglOnscreen *onscreen,
                                                    uint32_t      drm_format,
@@ -2266,14 +2275,35 @@ meta_onscreen_native_is_buffer_scanout_compatible (CoglOnscreen *onscreen,
 
   gbm_bo = meta_drm_buffer_gbm_get_bo (META_DRM_BUFFER_GBM (fb));
 
-  if (gbm_bo_get_format (gbm_bo) != drm_format)
-    return FALSE;
+  if (gbm_bo_get_format (gbm_bo) != drm_format ||
+      gbm_bo_get_modifier (gbm_bo) != drm_modifier ||
+      gbm_bo_get_stride (gbm_bo) != stride)
+    {
+      static uint32_t last_format;
+      static uint64_t last_modifier;
+      static uint32_t last_stride;
 
-  if (gbm_bo_get_modifier (gbm_bo) != drm_modifier)
-    return FALSE;
+      if (drm_format != last_format ||
+          drm_modifier != last_modifier ||
+          stride != last_stride)
+        {
+          uint32_t fb_format = gbm_bo_get_format (gbm_bo);
+          uint64_t fb_modifier = gbm_bo_get_modifier (gbm_bo);
 
-  if (gbm_bo_get_stride (gbm_bo) != stride)
-    return FALSE;
+          g_message ("DMABUF: scanout rejected: client buffer "
+                     "%.4s/0x%" G_GINT64_MODIFIER "x/stride %u "
+                     "vs onscreen %.4s/0x%" G_GINT64_MODIFIER "x/stride %u",
+                     (char *) &drm_format, drm_modifier, stride,
+                     (char *) &fb_format, fb_modifier,
+                     gbm_bo_get_stride (gbm_bo));
+
+          last_format = drm_format;
+          last_modifier = drm_modifier;
+          last_stride = stride;
+        }
+
+      return FALSE;
+    }
 
   return TRUE;
 }
