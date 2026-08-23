@@ -2245,6 +2245,27 @@ meta_onscreen_native_get_crtc (CoglOnscreen *onscreen)
   return onscreen_native->crtc;
 }
 
+static gboolean
+primary_plane_supports_modifier (MetaCrtc *crtc,
+                                 uint32_t  drm_format,
+                                 uint64_t  drm_modifier)
+{
+  GArray *modifiers;
+  unsigned int i;
+
+  modifiers = meta_crtc_kms_get_modifiers (crtc, drm_format);
+  if (!modifiers)
+    return FALSE;
+
+  for (i = 0; i < modifiers->len; i++)
+    {
+      if (g_array_index (modifiers, uint64_t, i) == drm_modifier)
+        return TRUE;
+    }
+
+  return FALSE;
+}
+
 gboolean
 meta_onscreen_native_is_buffer_scanout_compatible (CoglOnscreen *onscreen,
                                                    uint32_t      drm_format,
@@ -2275,37 +2296,52 @@ meta_onscreen_native_is_buffer_scanout_compatible (CoglOnscreen *onscreen,
 
   gbm_bo = meta_drm_buffer_gbm_get_bo (META_DRM_BUFFER_GBM (fb));
 
-  if (gbm_bo_get_format (gbm_bo) != drm_format ||
-      gbm_bo_get_modifier (gbm_bo) != drm_modifier ||
-      gbm_bo_get_stride (gbm_bo) != stride)
+  /* A legacy page flip may never change the framebuffer format. */
+  if (gbm_bo_get_format (gbm_bo) == drm_format)
     {
-      static uint32_t last_format;
-      static uint64_t last_modifier;
-      static uint32_t last_stride;
+      if (gbm_bo_get_modifier (gbm_bo) == drm_modifier &&
+          gbm_bo_get_stride (gbm_bo) == stride)
+        return TRUE;
 
-      if (drm_format != last_format ||
-          drm_modifier != last_modifier ||
-          stride != last_stride)
-        {
-          uint32_t fb_format = gbm_bo_get_format (gbm_bo);
-          uint64_t fb_modifier = gbm_bo_get_modifier (gbm_bo);
-
-          g_message ("DMABUF: scanout rejected: client buffer "
-                     "%.4s/0x%" G_GINT64_MODIFIER "x/stride %u "
-                     "vs onscreen %.4s/0x%" G_GINT64_MODIFIER "x/stride %u",
-                     (char *) &drm_format, drm_modifier, stride,
-                     (char *) &fb_format, fb_modifier,
-                     gbm_bo_get_stride (gbm_bo));
-
-          last_format = drm_format;
-          last_modifier = drm_modifier;
-          last_stride = stride;
-        }
-
-      return FALSE;
+      /* A layout differing from the composited fb is fine as long as the
+       * primary plane advertises the modifier: any driver exposing
+       * IN_FORMATS validates flips against the plane state, not against
+       * the previous framebuffer. Implicit-modifier buffers stay on the
+       * strict path above, since drivers without modifier support may not
+       * validate a pitch change on flip. */
+      if (drm_modifier != DRM_FORMAT_MOD_INVALID &&
+          primary_plane_supports_modifier (onscreen_native->crtc,
+                                           drm_format,
+                                           drm_modifier))
+        return TRUE;
     }
 
-  return TRUE;
+  {
+    static uint32_t last_format;
+    static uint64_t last_modifier;
+    static uint32_t last_stride;
+
+    if (drm_format != last_format ||
+        drm_modifier != last_modifier ||
+        stride != last_stride)
+      {
+        uint32_t fb_format = gbm_bo_get_format (gbm_bo);
+        uint64_t fb_modifier = gbm_bo_get_modifier (gbm_bo);
+
+        g_message ("DMABUF: scanout rejected: client buffer "
+                   "%.4s/0x%" G_GINT64_MODIFIER "x/stride %u "
+                   "vs onscreen %.4s/0x%" G_GINT64_MODIFIER "x/stride %u",
+                   (char *) &drm_format, drm_modifier, stride,
+                   (char *) &fb_format, fb_modifier,
+                   gbm_bo_get_stride (gbm_bo));
+
+        last_format = drm_format;
+        last_modifier = drm_modifier;
+        last_stride = stride;
+      }
+  }
+
+  return FALSE;
 }
 
 static void
