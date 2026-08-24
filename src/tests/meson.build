@@ -123,6 +123,17 @@ headless_start_test = executable('muffin-headless-start-test',
   install_dir: muffin_installed_tests_libexecdir,
 )
 
+scale_tests = executable('muffin-scale-tests',
+  sources: [
+    'scale-tests.c',
+  ],
+  include_directories: tests_includepath,
+  c_args: tests_c_args,
+  dependencies: [tests_deps],
+  install: have_installed_tests,
+  install_dir: muffin_installed_tests_libexecdir,
+)
+
 stage_view_tests = executable('muffin-stage-view-tests',
   sources: [
     'meta-backend-test.c',
@@ -188,6 +199,13 @@ test('normal', unit_tests,
 )
 
 test('headless-start', headless_start_test,
+  suite: ['core', 'muffin/unit'],
+  env: test_env,
+  is_parallel: false,
+  timeout: 60,
+)
+
+test('scale', scale_tests,
   suite: ['core', 'muffin/unit'],
   env: test_env,
   is_parallel: false,
